@@ -1,0 +1,9 @@
+usr/lib/*/qt5/plugins/kcms/kcm_screenlocker.so
+usr/share/kconf_update/*
+usr/share/knotifications5/*
+usr/share/kpackage/kcms/kcm_screenlocker/*
+usr/share/kservices5/*
+usr/share/ksmserver/*
+usr/share/locale/*/*/kscreenlocker.mo
+usr/share/locale/*/*/kscreenlocker_greet.mo
+usr/share/locale/*/*/kcm_screenlocker.mo
