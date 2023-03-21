@@ -1,8 +1,12 @@
-kscreenlocker (5.24.3-1+u001) UNRELEASED; urgency=medium
+kscreenlocker (5.24.3-1deepin) unstable; urgency=medium
 
+  [ Debian Qt/KDE Maintainers ]
   * update
 
- -- Debian Qt/KDE Maintainers <debian-qt-kde@lists.debian.org>  Sun, 24 Apr 2022 17:41:01 +0800
+  [ Yutao Meng ]
+  * Regulate version name
+
+ -- Yutao Meng <mengyutao@uniontech.com>  Tue, 21 Mar 2023 14:05:43 +0800
 
 kscreenlocker (5.24.3-1) unstable; urgency=medium
 
