@@ -1,24 +1,9 @@
-/********************************************************************
- This file is part of the KDE project.
+/*
+SPDX-FileCopyrightText: 2020 Cyril Rossi <cyril.rossi@enioka.com>
+SPDX-License-Identifier: GPL-2.0-or-later
+*/
 
- Copyright 2020 Cyril Rossi <cyril.rossi@enioka.com>
-
-This program is free software; you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2 of the License, or
-(at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*********************************************************************/
-
-#ifndef APPEARANCESETTINGS_H
-#define APPEARANCESETTINGS_H
+#pragma once
 
 #include <QObject>
 
@@ -28,13 +13,10 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 namespace ScreenLocker
 {
 class WallpaperIntegration;
-class LnFIntegration;
+class ShellIntegration;
 }
 
-namespace KDeclarative
-{
-class ConfigPropertyMap;
-}
+class KConfigPropertyMap;
 
 class AppearanceSettings : public QObject
 {
@@ -43,11 +25,11 @@ class AppearanceSettings : public QObject
 public:
     explicit AppearanceSettings(QObject *parent = nullptr);
 
-    QUrl lnfConfigFile() const;
+    QUrl shellConfigFile() const;
     QUrl wallpaperConfigFile() const;
 
-    KDeclarative::ConfigPropertyMap *wallpaperConfiguration() const;
-    KDeclarative::ConfigPropertyMap *lnfConfiguration() const;
+    KConfigPropertyMap *wallpaperConfiguration() const;
+    KConfigPropertyMap *shellConfiguration() const;
 
     ScreenLocker::WallpaperIntegration *wallpaperIntegration() const;
 
@@ -64,15 +46,13 @@ Q_SIGNALS:
     void currentWallpaperChanged();
 
 private:
-    void loadLnfConfig();
+    void loadShellConfig();
 
     KPackage::Package m_package;
     ScreenLocker::WallpaperIntegration *m_wallpaperIntegration = nullptr;
     KCoreConfigSkeleton *m_wallpaperSettings = nullptr;
     QUrl m_wallpaperConfigFile;
-    ScreenLocker::LnFIntegration *m_lnfIntegration = nullptr;
-    KCoreConfigSkeleton *m_lnfSettings = nullptr;
-    QUrl m_lnfConfigFile;
+    ScreenLocker::ShellIntegration *m_shellIntegration = nullptr;
+    KCoreConfigSkeleton *m_shellSettings = nullptr;
+    QUrl m_shellConfigFile;
 };
-
-#endif // APPEARANCESETTINGS_H

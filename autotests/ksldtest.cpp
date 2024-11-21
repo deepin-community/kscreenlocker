@@ -1,33 +1,23 @@
-/********************************************************************
- KSld - the KDE Screenlocker Daemon
- This file is part of the KDE project.
+/*
+SPDX-FileCopyrightText: 2014 Martin Gräßlin <mgraesslin@kde.org>
 
-Copyright (C) 2014 Martin Gräßlin <mgraesslin@kde.org>
-
-This program is free software; you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2 of the License, or
-(at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*********************************************************************/
+SPDX-License-Identifier: GPL-2.0-or-later
+*/
 // own
 #include "../ksldapp.h"
 // KDE Frameworks
 #include <KIdleTime>
+#include <KWindowSystem>
 // Qt
 #include <QProcess>
-#include <QX11Info>
-#include <QtTest>
+#include <QSignalSpy>
+#include <QTest>
+#include <private/qtx11extras_p.h>
 // xcb
 #include <xcb/xcb.h>
 #include <xcb/xtest.h>
+// POSIX
+#include <sys/socket.h> // socketpair
 
 class KSldTest : public QObject
 {
@@ -48,6 +38,10 @@ void KSldTest::initTestCase()
 
 void KSldTest::testEstablishGrab()
 {
+    if (!KWindowSystem::isPlatformX11()) {
+        QSKIP("keyboard and pointer grabbing by other processes is only possible on X11");
+    }
+
     ScreenLocker::KSldApp ksld;
     ksld.initialize();
     QVERIFY(ksld.establishGrab());
@@ -60,11 +54,11 @@ void KSldTest::testEstablishGrab()
     // to get the grab to fail we need another X client
     // we start another process to perform our grab
     QProcess keyboardGrabber;
-    keyboardGrabber.start(QStringLiteral("./keyboardGrabber"));
+    keyboardGrabber.start(QStringLiteral("./keyboardGrabber"), QStringList());
     QVERIFY(keyboardGrabber.waitForStarted());
 
     // let's add some delay to be sure that keyboardGrabber has it's X stuff done
-    QTest::qWait(100);
+    QTest::qWait(std::chrono::milliseconds{100});
 
     // now grabbing should fail
     QVERIFY(!ksld.establishGrab());
@@ -80,11 +74,11 @@ void KSldTest::testEstablishGrab()
 
     // now the same with pointer
     QProcess pointerGrabber;
-    pointerGrabber.start(QStringLiteral("./pointerGrabber"));
+    pointerGrabber.start(QStringLiteral("./pointerGrabber"), QStringList());
     QVERIFY(pointerGrabber.waitForStarted());
 
     // let's add some delay to be sure that pointerGrabber has it's X stuff done
-    QTest::qWait(100);
+    QTest::qWait(std::chrono::milliseconds{100});
 
     // now grabbing should fail
     QVERIFY(!ksld.establishGrab());
@@ -103,18 +97,26 @@ void KSldTest::testActivateOnTimeout()
     ScreenLocker::KSldApp ksld;
     ksld.initialize();
 
+    if (KWindowSystem::isPlatformWayland()) {
+        // without having a wayland fd, the app will follow the X11 code path
+        int sx[2];
+        QCOMPARE(socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0, sx), 0);
+        ksld.setWaylandFd(sx[1]);
+    }
+
     // we need to modify the idle timeout of KSLD, it's in minutes we cannot wait that long
     if (ksld.idleId() != 0) {
         // remove old Idle id
         KIdleTime::instance()->removeIdleTimeout(ksld.idleId());
     }
-    ksld.setIdleId(KIdleTime::instance()->addIdleTimeout(5000));
+    ksld.setIdleId(KIdleTime::instance()->addIdleTimeout(std::chrono::seconds{5}));
 
     QSignalSpy lockStateChangedSpy(&ksld, &ScreenLocker::KSldApp::lockStateChanged);
     QVERIFY(lockStateChangedSpy.isValid());
 
     // let's wait the double of the idle timeout
-    QVERIFY(lockStateChangedSpy.wait(10000));
+    QVERIFY2(lockStateChangedSpy.wait(std::chrono::seconds{10}),
+             "If running the test locally, make sure you're not moving the mouse or otherwise interrupting this test's idle check.");
     QCOMPARE(ksld.lockState(), ScreenLocker::KSldApp::AcquiringLock);
 
     // let's simulate unlock to get rid of started greeter process
@@ -133,6 +135,10 @@ void KSldTest::testActivateOnTimeout()
 
 void KSldTest::testGraceTimeUnlocking()
 {
+    if (!KWindowSystem::isPlatformX11()) {
+        QSKIP("XCB fake input won't work on Wayland");
+    }
+
     // this time verifies that the screen gets unlocked during grace time by simulated user activity
     ScreenLocker::KSldApp ksld(this);
     ksld.initialize();
@@ -142,7 +148,7 @@ void KSldTest::testGraceTimeUnlocking()
         // remove old Idle id
         KIdleTime::instance()->removeIdleTimeout(ksld.idleId());
     }
-    ksld.setIdleId(KIdleTime::instance()->addIdleTimeout(5000));
+    ksld.setIdleId(KIdleTime::instance()->addIdleTimeout(std::chrono::seconds{5}));
     // infinite
     ksld.setGraceTime(-1);
 
@@ -152,7 +158,7 @@ void KSldTest::testGraceTimeUnlocking()
     QVERIFY(unlockedSpy.isValid());
 
     // let's wait quite some time to give the greeter a chance to come up
-    QVERIFY(lockedSpy.wait(30000));
+    QVERIFY(lockedSpy.wait(std::chrono::seconds{30}));
     QCOMPARE(ksld.lockState(), ScreenLocker::KSldApp::Locked);
 
     // let's simulate unlock by faking input
@@ -163,7 +169,7 @@ void KSldTest::testGraceTimeUnlocking()
 
     // now let's test again without grace time
     ksld.setGraceTime(0);
-    QVERIFY(lockedSpy.wait(30000));
+    QVERIFY(lockedSpy.wait(std::chrono::seconds{30}));
     QCOMPARE(ksld.lockState(), ScreenLocker::KSldApp::Locked);
 
     xcb_test_fake_input(QX11Info::connection(), XCB_MOTION_NOTIFY, 0, XCB_TIME_CURRENT_TIME, XCB_WINDOW_NONE, cursorPos.x(), cursorPos.y(), 0);

@@ -1,18 +1,285 @@
-kscreenlocker (5.24.3-2deepin1) unstable; urgency=medium
+kscreenlocker (6.2.1-1) experimental; urgency=medium
 
-  * Normalize ver2 (XdeepinY).
+  [ Aurélien COUDERC ]
+  * New upstream release (6.2.1).
+  * Update build-deps and deps with the info from cmake.
 
- -- Tianyu Chen <sweetyfish@deepin.org>  Tue, 27 Aug 2024 16:04:15 +0800
+ -- Aurélien COUDERC <coucouf@debian.org>  Tue, 15 Oct 2024 21:24:52 +0200
 
-kscreenlocker (5.24.3-2deepin) unstable; urgency=medium
+kscreenlocker (6.2.0-1) experimental; urgency=medium
 
-  [ Debian Qt/KDE Maintainers ]
-  * update
+  [ Aurélien COUDERC ]
+  * New upstream release (6.1.90).
+  * Update build-deps and deps with the info from cmake.
+  * New upstream release (6.2.0).
+  * Update build-deps and deps with the info from cmake.
+  * Tighten inter-Plasma package dependencies.
 
-  [ Yutao Meng ]
-  * Regulate version name
+ -- Aurélien COUDERC <coucouf@debian.org>  Sat, 05 Oct 2024 23:17:49 +0200
 
- -- Yutao Meng <mengyutao@uniontech.com>  Tue, 21 Mar 2023 14:05:43 +0800
+kscreenlocker (6.1.5-1) experimental; urgency=medium
+
+  [ Aurélien COUDERC ]
+  * New upstream release (6.1.5).
+  * Update build-deps and deps with the info from cmake.
+  * Tighten Plasma packages inter-dependencies.
+  * Drop useless ${perl:Depends} for kde-config-screenlocker.
+
+ -- Aurélien COUDERC <coucouf@debian.org>  Wed, 11 Sep 2024 23:28:12 +0200
+
+kscreenlocker (6.1.4-1) experimental; urgency=medium
+
+  [ Aurélien COUDERC ]
+  * New upstream release (6.1.4).
+  * Update build-deps and deps with the info from cmake.
+
+ -- Aurélien COUDERC <coucouf@debian.org>  Sun, 11 Aug 2024 23:58:25 +0200
+
+kscreenlocker (6.1.3-1) experimental; urgency=medium
+
+  [ Aurélien COUDERC ]
+  * New upstream release (6.1.3).
+  * Update build-deps and deps with the info from cmake.
+  * Update symbols from build for 6.1.3.
+
+ -- Aurélien COUDERC <coucouf@debian.org>  Sun, 21 Jul 2024 23:46:20 +0200
+
+kscreenlocker (6.1.0-2) experimental; urgency=medium
+
+  [ Patrick Franz ]
+  * Add missing Breaks+Replaces for libkscreenlocker6 against
+    libkscreenlocker5 (Closes: #1074165).
+  * Removes the Breaks against kwin-common. To be evaluated.
+
+ -- Patrick Franz <deltaone@debian.org>  Tue, 25 Jun 2024 00:49:04 +0200
+
+kscreenlocker (6.1.0-1) experimental; urgency=medium
+
+  [ Patrick Franz ]
+  * New upstream release (6.1.0).
+  * Update build-deps and deps with the info from cmake.
+  * New binary package libkscreenlocker6.
+  * Update d/copyright.
+
+ -- Patrick Franz <deltaone@debian.org>  Sun, 23 Jun 2024 17:26:02 +0200
+
+kscreenlocker (5.27.11-1) unstable; urgency=medium
+
+  [ Patrick Franz ]
+  * Bump Standards-Version to 4.7.0 (No changes needed).
+  * New upstream release (5.27.11).
+  * Update build-deps and deps with the info from cmake.
+  * Remove inactive uploaders, thanks for your work.
+
+ -- Patrick Franz <deltaone@debian.org>  Sun, 19 May 2024 12:24:39 +0200
+
+kscreenlocker (5.27.10-1) unstable; urgency=medium
+
+  [ Patrick Franz ]
+  * New upstream release (5.27.10).
+  * Update build-deps and deps with the info from cmake.
+
+ -- Patrick Franz <deltaone@debian.org>  Thu, 11 Jan 2024 23:24:14 +0100
+
+kscreenlocker (5.27.9-1) unstable; urgency=medium
+
+  [ Patrick Franz ]
+  * New upstream release (5.27.9).
+  * Update build-deps and deps with the info from cmake.
+
+ -- Patrick Franz <deltaone@debian.org>  Fri, 27 Oct 2023 21:54:13 +0200
+
+kscreenlocker (5.27.8-1) unstable; urgency=medium
+
+  [ Patrick Franz ]
+  * New upstream release (5.27.8).
+
+ -- Patrick Franz <deltaone@debian.org>  Wed, 13 Sep 2023 21:54:21 +0200
+
+kscreenlocker (5.27.7-1) unstable; urgency=medium
+
+  [ Patrick Franz ]
+  * New upstream release (5.27.7).
+  * Update build-deps and deps with the info from cmake.
+
+ -- Patrick Franz <deltaone@debian.org>  Thu, 03 Aug 2023 18:54:52 +0200
+
+kscreenlocker (5.27.5-2) unstable; urgency=medium
+
+  * Release to unstable.
+
+ -- Aurélien COUDERC <coucouf@debian.org>  Sat, 27 May 2023 18:23:45 +0200
+
+kscreenlocker (5.27.5-1) experimental; urgency=medium
+
+  [ Patrick Franz ]
+  * New upstream release (5.27.5).
+
+ -- Patrick Franz <deltaone@debian.org>  Tue, 09 May 2023 23:27:38 +0200
+
+kscreenlocker (5.27.3-1) experimental; urgency=medium
+
+  [ Patrick Franz ]
+  * New upstream release (5.27.3).
+
+ -- Patrick Franz <deltaone@debian.org>  Wed, 22 Mar 2023 23:18:00 +0100
+
+kscreenlocker (5.27.2-1) unstable; urgency=medium
+
+  [ Aurélien COUDERC ]
+  * New upstream release (5.27.1).
+  * Update the list of installed files from build logs.
+  * New upstream release (5.27.2).
+
+ -- Aurélien COUDERC <coucouf@debian.org>  Tue, 28 Feb 2023 15:00:48 +0100
+
+kscreenlocker (5.27.0-1) unstable; urgency=medium
+
+  [ Aurélien COUDERC ]
+  * New upstream release (5.27.0).
+  * Update build-deps and deps with the info from cmake.
+
+ -- Aurélien COUDERC <coucouf@debian.org>  Sat, 18 Feb 2023 17:08:44 +0100
+
+kscreenlocker (5.26.90-1) unstable; urgency=medium
+
+  [ Aurélien COUDERC ]
+  * New upstream release (5.26.90).
+  * Update build-deps and deps with the info from cmake.
+  * Bump Standards-Version to 4.6.2, no change required.
+  * Update cross-plasma versioned dependencies.
+
+ -- Aurélien COUDERC <coucouf@debian.org>  Mon, 23 Jan 2023 21:50:57 +0100
+
+kscreenlocker (5.26.5-1) unstable; urgency=medium
+
+  [ Aurélien COUDERC ]
+  * New upstream release (5.26.5).
+
+ -- Aurélien COUDERC <coucouf@debian.org>  Sat, 07 Jan 2023 00:22:00 +0100
+
+kscreenlocker (5.26.4-1) unstable; urgency=medium
+
+  [ Aurélien COUDERC ]
+  * New upstream release (5.26.4).
+
+ -- Aurélien COUDERC <coucouf@debian.org>  Tue, 29 Nov 2022 16:06:04 +0100
+
+kscreenlocker (5.26.3-1) unstable; urgency=medium
+
+  [ Aurélien COUDERC ]
+  * New upstream release (5.26.3).
+
+ -- Aurélien COUDERC <coucouf@debian.org>  Tue, 08 Nov 2022 15:46:11 +0100
+
+kscreenlocker (5.26.2-1) unstable; urgency=medium
+
+  [ Aurélien COUDERC ]
+  * New upstream release (5.26.1).
+  * New upstream release (5.26.2).
+
+ -- Aurélien COUDERC <coucouf@debian.org>  Thu, 27 Oct 2022 23:35:07 +0200
+
+kscreenlocker (5.26.0-1) unstable; urgency=medium
+
+  [ Aurélien COUDERC ]
+  * New upstream release (5.26.0).
+  * Release to unstable.
+
+ -- Aurélien COUDERC <coucouf@debian.org>  Tue, 11 Oct 2022 15:44:22 +0200
+
+kscreenlocker (5.25.90-2) experimental; urgency=medium
+
+  [ Aurélien COUDERC ]
+  * Tighten cross-plasma components dependencies.
+
+ -- Aurélien COUDERC <coucouf@debian.org>  Fri, 07 Oct 2022 11:47:05 +0200
+
+kscreenlocker (5.25.90-1) experimental; urgency=medium
+
+  [ Aurélien COUDERC ]
+  * New upstream release (5.25.90).
+  * Update build-deps and deps with the info from cmake.
+  * Adapt Breaks versions against kwin-common.
+
+ -- Aurélien COUDERC <coucouf@debian.org>  Sun, 25 Sep 2022 00:14:24 +0200
+
+kscreenlocker (5.25.5-1) unstable; urgency=medium
+
+  [ Aurélien COUDERC ]
+  * New upstream release (5.25.5).
+
+ -- Aurélien COUDERC <coucouf@debian.org>  Fri, 09 Sep 2022 23:21:57 +0200
+
+kscreenlocker (5.25.4-1) unstable; urgency=medium
+
+  [ Aurélien COUDERC ]
+  * New upstream release (5.25.4).
+
+ -- Aurélien COUDERC <coucouf@debian.org>  Tue, 02 Aug 2022 17:33:55 +0200
+
+kscreenlocker (5.25.3-1) unstable; urgency=medium
+
+  [ Aurélien COUDERC ]
+  * New upstream release (5.25.2).
+  * Drop now unused build dependency on libkf5textwidgets-dev.
+  * Add dependency from kde-config-screenlocker to systemsettings.
+  * Adapt lintian overrides.
+  * Replace "killall kscreenlocker_greet" with "loginctl unlock-sessions" in
+    postinst configure. The former doesn’t work anymore and leaves a broken
+    screen locker on upgrade if the screen was locked.
+  * New upstream release (5.25.3).
+  * Release to unstable
+
+ -- Aurélien COUDERC <coucouf@debian.org>  Sun, 17 Jul 2022 15:28:50 +0200
+
+kscreenlocker (5.25.1-1) experimental; urgency=medium
+
+  [ Patrick Franz ]
+  * New upstream release (5.25.1).
+  * Tighten inter-Plasma dependencies.
+
+ -- Patrick Franz <deltaone@debian.org>  Tue, 21 Jun 2022 21:47:11 +0200
+
+kscreenlocker (5.25.0-1) experimental; urgency=medium
+
+  * New upstream release (5.25.0).
+  * Tighten build dependency to liblayershellqtinterface-dev (>= 5.25.0~).
+  * Bump Standards-Version to 4.6.1, no change required.
+
+ -- Aurélien COUDERC <coucouf@debian.org>  Tue, 14 Jun 2022 21:26:48 +0200
+
+kscreenlocker (5.24.90-2) experimental; urgency=medium
+
+  * Tighten build dependency to liblayershellqtinterface-dev (>= 5.24.90~).
+
+ -- Aurélien COUDERC <coucouf@debian.org>  Tue, 31 May 2022 22:37:40 +0200
+
+kscreenlocker (5.24.90-1) experimental; urgency=medium
+
+  [ Aurélien COUDERC ]
+  * New upstream release (5.24.90).
+  * Update the list of installed files from build logs.
+  * Update the list of installed files.
+  * Adapt Breaks versions on kwin-common.
+  * Add explicit build dependency to libkf5config-dev 5.94.0 to ensure we have
+    libkf5configqml available.
+
+ -- Aurélien COUDERC <coucouf@debian.org>  Fri, 20 May 2022 11:45:45 +0200
+
+kscreenlocker (5.24.5-1) unstable; urgency=medium
+
+  [ Aurélien COUDERC ]
+  * New upstream release (5.24.5).
+
+ -- Aurélien COUDERC <coucouf@debian.org>  Thu, 12 May 2022 21:40:14 +0200
+
+kscreenlocker (5.24.4-1) unstable; urgency=medium
+
+  [ Aurélien COUDERC ]
+  * New upstream release (5.24.4).
+
+ -- Aurélien COUDERC <coucouf@debian.org>  Wed, 30 Mar 2022 14:03:13 +0200
 
 kscreenlocker (5.24.3-1) unstable; urgency=medium
 

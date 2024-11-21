@@ -1,26 +1,12 @@
-/********************************************************************
- KSld - the KDE Screenlocker Daemon
- This file is part of the KDE project.
+/*
+SPDX-FileCopyrightText: 2011 Martin Gräßlin <mgraesslin@kde.org>
 
-Copyright (C) 2011 Martin Gräßlin <mgraesslin@kde.org>
-
-This program is free software; you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2 of the License, or
-(at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*********************************************************************/
-#ifndef SCREENLOCKER_GREETERAPP_H
-#define SCREENLOCKER_GREETERAPP_H
+SPDX-License-Identifier: GPL-2.0-or-later
+*/
+#pragma once
 
 #include <KPackage/PackageStructure>
+#include <PlasmaQuick/SharedQmlEngine>
 #include <QGuiApplication>
 #include <QUrl>
 
@@ -33,7 +19,7 @@ class Registry;
 }
 }
 
-namespace KQuickAddons
+namespace PlasmaQuick
 {
 class QuickViewSharedEngine;
 }
@@ -42,10 +28,12 @@ class Authenticator;
 
 struct org_kde_ksld;
 
+class PamAuthenticators;
+
 namespace ScreenLocker
 {
 class WallpaperIntegration;
-class LnFIntegration;
+class ShellIntegration;
 
 class UnlockApp : public QGuiApplication
 {
@@ -57,7 +45,7 @@ public:
     void initialViewSetup();
 
     void setTesting(bool enable);
-    void setTheme(const QString &theme);
+    void setShell(const QString &shell);
     void setImmediateLock(bool immediateLock);
     void lockImmediately();
     void setGraceTime(int milliseconds);
@@ -69,7 +57,7 @@ public:
     void updateCanHibernate();
 
 public Q_SLOTS:
-    void osdProgress(const QString &icon, int percent, const QString &additionalText);
+    void osdProgress(const QString &icon, int percent, const int maximumPercent, const QString &additionalText);
     void osdText(const QString &icon, const QString &additionalText);
 
 protected:
@@ -77,25 +65,25 @@ protected:
 
 private Q_SLOTS:
     void handleScreen(QScreen *screen);
-    KQuickAddons::QuickViewSharedEngine *createViewForScreen(QScreen *screen);
+    PlasmaQuick::QuickViewSharedEngine *createViewForScreen(QScreen *screen);
     void resetRequestIgnore();
     void suspendToRam();
     void suspendToDisk();
     void getFocus();
-    void markViewsAsVisible(KQuickAddons::QuickViewSharedEngine *view);
-    void setLockedPropertyOnViews();
+    void markViewsAsVisible(PlasmaQuick::QuickViewSharedEngine *view);
+    void graceLockEnded();
 
 private:
     void initialize();
-    void shareEvent(QEvent *e, KQuickAddons::QuickViewSharedEngine *from);
-    void loadWallpaperPlugin(KQuickAddons::QuickViewSharedEngine *view);
+    void shareEvent(QEvent *e, PlasmaQuick::QuickViewSharedEngine *from);
+    PlasmaQuick::SharedQmlEngine *loadWallpaperPlugin(PlasmaQuick::QuickViewSharedEngine *view);
+    void setWallpaperItemProperties(PlasmaQuick::SharedQmlEngine *wallpaperObject, PlasmaQuick::QuickViewSharedEngine *view);
     void screenGeometryChanged(QScreen *screen, const QRect &geo);
-    Authenticator *createAuthenticator();
     QWindow *getActiveScreen();
 
     QString m_packageName;
     QUrl m_mainQmlPath;
-    QList<KQuickAddons::QuickViewSharedEngine *> m_views;
+    QList<PlasmaQuick::QuickViewSharedEngine *> m_views;
     QTimer *m_resetRequestIgnoreTimer;
     QTimer *m_delayedLockTimer;
     KPackage::Package m_package;
@@ -103,7 +91,7 @@ private:
     bool m_ignoreRequests;
     bool m_immediateLock;
     bool m_runtimeInitialized;
-    Authenticator *m_authenticator;
+    PamAuthenticators *m_authenticators;
     int m_graceTime;
     bool m_noLock;
     bool m_defaultToSwitchUser;
@@ -112,14 +100,10 @@ private:
     bool m_canHibernate = false;
     QString m_userName, m_userImage;
 
-    KWayland::Client::ConnectionThread *m_ksldConnection = nullptr;
-    KWayland::Client::Registry *m_ksldRegistry = nullptr;
-    QThread *m_ksldConnectionThread = nullptr;
+    wl_display *m_display = nullptr;
     org_kde_ksld *m_ksldInterface = nullptr;
 
-    WallpaperIntegration *m_wallpaperIntegration;
-    LnFIntegration *m_lnfIntegration;
+    KPackage::Package m_wallpaperPackage;
+    ShellIntegration *m_shellIntegration;
 };
 } // namespace
-
-#endif // SCREENLOCKER_GREETERAPP_H

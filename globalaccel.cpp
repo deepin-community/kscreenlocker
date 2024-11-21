@@ -1,22 +1,8 @@
-/********************************************************************
- KSld - the KDE Screenlocker Daemon
- This file is part of the KDE project.
+/*
+SPDX-FileCopyrightText: 2015 Martin Gräßlin <mgraesslin@kde.org>
 
-Copyright (C) 2015 Martin Gräßlin <mgraesslin@kde.org>
-
-This program is free software; you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2 of the License, or
-(at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*********************************************************************/
+SPDX-License-Identifier: GPL-2.0-or-later
+*/
 #include "globalaccel.h"
 
 #include <KKeyServer>
@@ -27,8 +13,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include <QDBusPendingReply>
 #include <QKeyEvent>
 #include <QRegularExpression>
-#include <QX11Info>
 
+#include "x11info.h"
 #include <X11/keysym.h>
 #include <xcb/xcb.h>
 #include <xcb/xcb_keysyms.h>
@@ -52,6 +38,7 @@ static const QMap<QString, QRegularExpression> s_shortcutWhitelist{
     {QStringLiteral("/component/KDE_Keyboard_Layout_Switcher"),
      QRegularExpression(QStringLiteral("Switch to Next Keyboard Layout|Switch keyboard layout to .*"))},
     {QStringLiteral("/component/kcm_touchpad"), QRegularExpression(QStringLiteral("Toggle Touchpad|Enable Touchpad|Disable Touchpad"))},
+    {QStringLiteral("/component/kwin"), QRegularExpression(QStringLiteral("view_zoom_in|view_zoom_out|view_actual_size"))},
 };
 
 static uint g_keyModMaskXAccel = 0;
@@ -77,8 +64,8 @@ void GlobalAccel::prepare()
     // first ensure that we don't have some left over
     release();
 
-    if (QX11Info::isPlatformX11()) {
-        m_keySymbols = xcb_key_symbols_alloc(QX11Info::connection());
+    if (X11Info::isPlatformX11()) {
+        m_keySymbols = xcb_key_symbols_alloc(X11Info::connection());
         calculateGrabMasks();
     }
 
@@ -106,8 +93,8 @@ void GlobalAccel::components(QDBusPendingCallWatcher *self)
     for (const auto &path : reply.value()) {
         const QString objectPath = path.path();
         bool whitelisted = false;
-        for (auto it = s_shortcutWhitelist.begin(); it != s_shortcutWhitelist.end(); ++it) {
-            if (objectPath == it.key()) {
+        for (const auto &[key, value] : s_shortcutWhitelist.asKeyValueRange()) {
+            if (objectPath == key) {
                 whitelisted = true;
                 break;
             }
@@ -146,11 +133,11 @@ void GlobalAccel::components(QDBusPendingCallWatcher *self)
                     // this should not happen, just for safety
                     return;
                 }
-                const auto s = reply.value();
-                for (auto it = s.begin(); it != s.end(); ++it) {
-                    auto matches = whitelist.value().match((*it).uniqueName());
+                const auto shortcuts = reply.value();
+                for (const auto &shortcut : shortcuts) {
+                    auto matches = whitelist.value().match(shortcut.uniqueName());
                     if (matches.hasMatch()) {
-                        infos.append(*it);
+                        infos.append(shortcut);
                     }
                 }
                 m_shortcuts.insert(objectPath, infos);
@@ -187,10 +174,10 @@ bool GlobalAccel::keyEvent(QKeyEvent *event)
 
     const QKeySequence seq(keyCodeQt | keyModQt);
     // let's check whether we have a mapping shortcut
-    for (auto it = m_shortcuts.constBegin(); it != m_shortcuts.constEnd(); ++it) {
-        for (const auto &info : it.value()) {
+    for (const auto &[key, value] : std::as_const(m_shortcuts).asKeyValueRange()) {
+        for (const auto &info : value) {
             if (info.keys().contains(seq)) {
-                auto signal = QDBusMessage::createMethodCall(s_kglobalAccelService, it.key(), s_componentInterface, QStringLiteral("invokeShortcut"));
+                auto signal = QDBusMessage::createMethodCall(s_kglobalAccelService, key, s_componentInterface, QStringLiteral("invokeShortcut"));
                 signal.setArguments(QList<QVariant>{QVariant(info.uniqueName())});
                 QDBusConnection::sessionBus().asyncCall(signal);
                 return true;
@@ -251,10 +238,10 @@ bool GlobalAccel::checkKeyPress(xcb_key_press_event_t *event)
 
     const QKeySequence seq(keyCodeQt | keyModQt);
     // let's check whether we have a mapping shortcut
-    for (auto it = m_shortcuts.begin(); it != m_shortcuts.end(); ++it) {
-        for (const auto &info : it.value()) {
+    for (const auto &[key, value] : std::as_const(m_shortcuts).asKeyValueRange()) {
+        for (const auto &info : value) {
             if (info.keys().contains(seq)) {
-                auto signal = QDBusMessage::createMethodCall(s_kglobalAccelService, it.key(), s_componentInterface, QStringLiteral("invokeShortcut"));
+                auto signal = QDBusMessage::createMethodCall(s_kglobalAccelService, key, s_componentInterface, QStringLiteral("invokeShortcut"));
                 signal.setArguments(QList<QVariant>{QVariant(info.uniqueName())});
                 QDBusConnection::sessionBus().asyncCall(signal);
                 return true;
@@ -263,3 +250,5 @@ bool GlobalAccel::checkKeyPress(xcb_key_press_event_t *event)
     }
     return false;
 }
+
+#include "moc_globalaccel.cpp"

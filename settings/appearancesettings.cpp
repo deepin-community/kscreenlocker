@@ -1,21 +1,7 @@
-/********************************************************************
- This file is part of the KDE project.
-
- Copyright 2020 Cyril Rossi <cyril.rossi@enioka.com>
-
-This program is free software; you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2 of the License, or
-(at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*********************************************************************/
+/*
+SPDX-FileCopyrightText: 2020 Cyril Rossi <cyril.rossi@enioka.com>
+SPDX-License-Identifier: GPL-2.0-or-later
+*/
 
 #include "appearancesettings.h"
 
@@ -23,7 +9,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include <KPackage/PackageLoader>
 
 #include "kscreensaversettings.h"
-#include "lnf_integration.h"
+#include "shell_integration.h"
 #include "wallpaper_integration.h"
 
 AppearanceSettings::AppearanceSettings(QObject *parent)
@@ -31,9 +17,9 @@ AppearanceSettings::AppearanceSettings(QObject *parent)
 {
 }
 
-QUrl AppearanceSettings::lnfConfigFile() const
+QUrl AppearanceSettings::shellConfigFile() const
 {
-    return m_lnfConfigFile;
+    return m_shellConfigFile;
 }
 
 QUrl AppearanceSettings::wallpaperConfigFile() const
@@ -41,7 +27,7 @@ QUrl AppearanceSettings::wallpaperConfigFile() const
     return m_wallpaperConfigFile;
 }
 
-KDeclarative::ConfigPropertyMap *AppearanceSettings::wallpaperConfiguration() const
+KConfigPropertyMap *AppearanceSettings::wallpaperConfiguration() const
 {
     if (!m_wallpaperIntegration) {
         return nullptr;
@@ -49,12 +35,12 @@ KDeclarative::ConfigPropertyMap *AppearanceSettings::wallpaperConfiguration() co
     return m_wallpaperIntegration->configuration();
 }
 
-KDeclarative::ConfigPropertyMap *AppearanceSettings::lnfConfiguration() const
+KConfigPropertyMap *AppearanceSettings::shellConfiguration() const
 {
-    if (!m_lnfIntegration) {
+    if (!m_shellIntegration) {
         return nullptr;
     }
-    return m_lnfIntegration->configuration();
+    return m_shellIntegration->configuration();
 }
 
 ScreenLocker::WallpaperIntegration *AppearanceSettings::wallpaperIntegration() const
@@ -65,11 +51,11 @@ ScreenLocker::WallpaperIntegration *AppearanceSettings::wallpaperIntegration() c
 void AppearanceSettings::load()
 {
     loadWallpaperConfig();
-    loadLnfConfig();
+    loadShellConfig();
 
-    if (m_lnfSettings) {
-        m_lnfSettings->load();
-        Q_EMIT m_lnfSettings->configChanged(); // To force the ConfigPropertyMap to reevaluate
+    if (m_shellSettings) {
+        m_shellSettings->load();
+        Q_EMIT m_shellSettings->configChanged(); // To force the ConfigPropertyMap to reevaluate
     }
 
     if (m_wallpaperSettings) {
@@ -80,8 +66,8 @@ void AppearanceSettings::load()
 
 void AppearanceSettings::save()
 {
-    if (m_lnfSettings) {
-        m_lnfSettings->save();
+    if (m_shellSettings) {
+        m_shellSettings->save();
     }
 
     if (m_wallpaperSettings) {
@@ -91,9 +77,9 @@ void AppearanceSettings::save()
 
 void AppearanceSettings::defaults()
 {
-    if (m_lnfSettings) {
-        m_lnfSettings->setDefaults();
-        Q_EMIT m_lnfSettings->configChanged(); // To force the ConfigPropertyMap to reevaluate
+    if (m_shellSettings) {
+        m_shellSettings->setDefaults();
+        Q_EMIT m_shellSettings->configChanged(); // To force the ConfigPropertyMap to reevaluate
     }
 
     if (m_wallpaperSettings) {
@@ -106,8 +92,8 @@ bool AppearanceSettings::isDefaults() const
 {
     bool defaults = true;
 
-    if (m_lnfSettings) {
-        defaults &= m_lnfSettings->isDefaults();
+    if (m_shellSettings) {
+        defaults &= m_shellSettings->isDefaults();
     }
 
     if (m_wallpaperSettings) {
@@ -120,8 +106,8 @@ bool AppearanceSettings::isSaveNeeded() const
 {
     bool saveNeeded = false;
 
-    if (m_lnfSettings) {
-        saveNeeded |= m_lnfSettings->isSaveNeeded();
+    if (m_shellSettings) {
+        saveNeeded |= m_shellSettings->isSaveNeeded();
     }
 
     if (m_wallpaperSettings) {
@@ -141,7 +127,7 @@ void AppearanceSettings::loadWallpaperConfig()
         delete m_wallpaperIntegration;
     }
 
-    m_wallpaperIntegration = new ScreenLocker::WallpaperIntegration(this);
+    m_wallpaperIntegration = new ScreenLocker::WallpaperIntegration();
     m_wallpaperIntegration->setConfig(KScreenSaverSettings::getInstance().sharedConfig());
     m_wallpaperIntegration->setPluginName(KScreenSaverSettings::getInstance().wallpaperPluginId());
     m_wallpaperIntegration->init();
@@ -150,27 +136,24 @@ void AppearanceSettings::loadWallpaperConfig()
     Q_EMIT currentWallpaperChanged();
 }
 
-void AppearanceSettings::loadLnfConfig()
+void AppearanceSettings::loadShellConfig()
 {
-    if (m_package.isValid() && m_lnfIntegration) {
+    if (m_package.isValid() && m_shellIntegration) {
         return;
     }
 
-    Q_ASSERT(!m_package.isValid() && !m_lnfIntegration);
+    Q_ASSERT(!m_package.isValid() && !m_shellIntegration);
 
-    m_package = KPackage::PackageLoader::self()->loadPackage(QStringLiteral("Plasma/LookAndFeel"));
-    KConfigGroup cg(KSharedConfig::openConfig(QStringLiteral("kdeglobals")), "KDE");
-    const QString packageName = cg.readEntry("LookAndFeelPackage", QString());
-    if (!packageName.isEmpty()) {
-        m_package.setPath(packageName);
-    }
-
-    m_lnfIntegration = new ScreenLocker::LnFIntegration(this);
-    m_lnfIntegration->setPackage(m_package);
-    m_lnfIntegration->setConfig(KScreenSaverSettings::getInstance().sharedConfig());
-    m_lnfIntegration->init();
-    m_lnfSettings = m_lnfIntegration->configScheme();
+    m_package = KPackage::PackageLoader::self()->loadPackage(QStringLiteral("Plasma/Shell"));
+    m_shellIntegration = new ScreenLocker::ShellIntegration(this);
+    m_package.setPath(m_shellIntegration->defaultShell());
+    m_shellIntegration->setPackage(m_package);
+    m_shellIntegration->setConfig(KScreenSaverSettings::getInstance().sharedConfig());
+    m_shellIntegration->init();
+    m_shellSettings = m_shellIntegration->configScheme();
 
     auto sourceFile = m_package.fileUrl(QByteArrayLiteral("lockscreen"), QStringLiteral("config.qml"));
-    m_lnfConfigFile = sourceFile;
+    m_shellConfigFile = sourceFile;
 }
+
+#include "moc_appearancesettings.cpp"

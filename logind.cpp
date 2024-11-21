@@ -1,22 +1,8 @@
-/********************************************************************
- KSld - the KDE Screenlocker Daemon
- This file is part of the KDE project.
+/*
+SPDX-FileCopyrightText: 2014 Martin Gräßlin <mgraesslin@kde.org>
 
-Copyright (C) 2014 Martin Gräßlin <mgraesslin@kde.org>
-
-This program is free software; you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2 of the License, or
-(at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*********************************************************************/
+SPDX-License-Identifier: GPL-2.0-or-later
+*/
 #include "logind.h"
 
 #include <KLocalizedString>
@@ -24,6 +10,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include <QCoreApplication>
 #include <QDBusConnectionInterface>
 #include <QDBusServiceWatcher>
+#include <QStandardPaths>
 
 #include <kscreenlocker_logging.h>
 
@@ -51,6 +38,12 @@ LogindIntegration::LogindIntegration(const QDBusConnection &connection, QObject 
     , m_managerInterface(nullptr)
     , m_sessionInterface(nullptr)
 {
+    // if we are inside Kwin's unit tests don't query or manipulate logind
+    // avoid connecting but keep all stubs in place
+    if (QStandardPaths::isTestModeEnabled()) {
+        return;
+    }
+
     connect(m_logindServiceWatcher, &QDBusServiceWatcher::serviceRegistered, this, &LogindIntegration::logindServiceRegistered);
     connect(m_logindServiceWatcher, &QDBusServiceWatcher::serviceUnregistered, this, [this]() {
         m_connected = false;
@@ -218,3 +211,5 @@ bool LogindIntegration::isLocked() const
     qCDebug(KSCREENLOCKER()) << reply.error();
     return false;
 }
+
+#include "moc_logind.cpp"
