@@ -1,77 +1,69 @@
-/********************************************************************
- KSld - the KDE Screenlocker Daemon
- This file is part of the KDE project.
+/*
+SPDX-FileCopyrightText: 2011 Martin Gräßlin <mgraesslin@kde.org>
+SPDX-FileCopyrightText: 2023 Nate Graham <nate@kde.org>
 
-Copyright (C) 2011 Martin Gräßlin <mgraesslin@kde.org>
+SPDX-License-Identifier: GPL-2.0-or-later
+*/
 
-This program is free software; you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2 of the License, or
-(at your option) any later version.
+import QtQuick 2.15
+import QtQuick.Controls as QQC2
 
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*********************************************************************/
-import QtQuick 2.0
-import org.kde.plasma.core 2.0 as PlasmaCore
-
+import org.kde.kirigami 2.20 as Kirigami
+import org.kde.plasma.core as PlasmaCore
 import org.kde.kquickcontrolsaddons 2.0
-
+import org.kde.ksvg 1.0 as KSvg
 import org.kde.plasma.private.sessions 2.0
-
-import org.kde.plasma.components 2.0 as PlasmaComponents
 
 Item {
     id: lockScreen
-    signal unlockRequested()
+
     property alias capsLockOn: unlockUI.capsLockOn
     property bool locked: false
 
-    // if there's no image, have a near black background
+    signal unlockRequested()
+
+    // if there's no image, have a pure black background
     Rectangle {
         width: parent.width
         height: parent.height
-        color: "#111"
+        color: "black"
     }
 
-    SessionsModel {
-        id: sessionsModel
+    SessionManagement {
+        id: sessionManagment
     }
 
     Image {
-        id: background
         anchors.fill: parent
-        source: theme.wallpaperPathForSize(parent.width, parent.height)
+        source: "file:" + PlasmaCore.Theme.wallpaperPathForSize(parent.width, parent.height)
         smooth: true
     }
 
-    PlasmaCore.FrameSvgItem {
+    KSvg.FrameSvgItem {
         id: dialog
+
         visible: lockScreen.locked
         anchors.centerIn: parent
+        width: mainStack.currentItem.implicitWidth + margins.left + margins.right
+        height: mainStack.currentItem.implicitHeight + margins.top + margins.bottom
         imagePath: "widgets/background"
-        width: mainStack.currentPage.implicitWidth + margins.left + margins.right
-        height: mainStack.currentPage.implicitHeight + margins.top + margins.bottom
 
         Behavior on height {
-            enabled: mainStack.currentPage != null
+            enabled: mainStack.currentItem != null
             NumberAnimation {
-                duration: 250
+                duration: Kirigami.Units.longDuration
             }
         }
         Behavior on width {
-            enabled: mainStack.currentPage != null
+            enabled: mainStack.currentItem != null
             NumberAnimation {
-                duration: 250
+                duration: Kirigami.Units.longDuration
             }
         }
-        PlasmaComponents.PageStack {
+
+        QQC2.StackView {
             id: mainStack
+
             clip: true
             anchors {
                 fill: parent
@@ -80,38 +72,35 @@ Item {
                 rightMargin: dialog.margins.right
                 bottomMargin: dialog.margins.bottom
             }
-            initialPage: unlockUI
+            initialItem: unlockUI
         }
     }
 
     Greeter {
         id: unlockUI
 
-        switchUserEnabled: sessionsModel.canSwitchUser
+        switchUserEnabled: sessionManagment.canSwitchUser
+
+        visible: opacity > 0
+        opacity: mainStack.currentItem == unlockUI
+        Behavior on opacity {
+            NumberAnimation {
+                duration: Kirigami.Units.longDuration
+            }
+        }
 
         Connections {
-            onAccepted: lockScreen.unlockRequested()
-            onSwitchUserClicked: { mainStack.push(userSessionsUIComponent); mainStack.currentPage.forceActiveFocus(); }
+            function onAccepted() {
+                lockScreen.unlockRequested();
+            }
+            function onSwitchUserClicked() {
+                sessionManagment.switchUser();
+            }
         }
     }
 
     function returnToLogin() {
         mainStack.pop();
         unlockUI.resetFocus();
-    }
-
-    Component {
-        id: userSessionsUIComponent
-
-        SessionSwitching {
-            id: userSessionsUI
-            visible: false
-
-            Connections {
-                onSwitchingCanceled: returnToLogin()
-                onSessionActivated: returnToLogin()
-                onNewSessionStarted: returnToLogin()
-            }
-        }
     }
 }

@@ -1,59 +1,42 @@
-/********************************************************************
- KSld - the KDE Screenlocker Daemon
- This file is part of the KDE project.
+/*
+SPDX-FileCopyrightText: 2004 Chris Howells <howells@kde.org>
+SPDX-FileCopyrightText: 2011 Martin Gräßlin <mgraesslin@kde.org>
 
-Copyright (C) 2004 Chris Howells <howells@kde.org>
-Copyright (C) 2011 Martin Gräßlin <mgraesslin@kde.org>
-
-This program is free software; you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2 of the License, or
-(at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*********************************************************************/
+SPDX-License-Identifier: GPL-2.0-or-later
+*/
 #include "greeterapp.h"
-#include "authenticator.h"
 #include "kscreensaversettingsbase.h"
-#include "lnf_integration.h"
 #include "noaccessnetworkaccessmanagerfactory.h"
 #include "powermanagement.h"
+#include "shell_integration.h"
 #include "wallpaper_integration.h"
 
 #include <config-kscreenlocker.h>
+#include <iostream>
 #include <kscreenlocker_greet_logging.h>
 
 #include <LayerShellQt/Window>
 
 // KDE
 #include <KAuthorized>
+#include <KConfigPropertyMap>
 #include <KCrash>
-#include <KDeclarative/ConfigPropertyMap>
-#include <KDeclarative/KQuickAddons/QuickViewSharedEngine>
-#include <KDeclarative/QmlObjectSharedEngine>
+#include <KLocalizedContext>
+#include <KScreenDpms/Dpms>
 #include <KWindowSystem>
-#include <kdeclarative/kdeclarative.h>
+#include <PlasmaQuick/QuickViewSharedEngine>
 
 #include <KUser>
 // Plasma
 #include <KPackage/Package>
 #include <KPackage/PackageLoader>
-// KWayland
-#include <KWayland/Client/connection_thread.h>
-#include <KWayland/Client/event_queue.h>
-#include <KWayland/Client/registry.h>
 // Qt
 #include <QAbstractNativeEventFilter>
 #include <QClipboard>
 #include <QDBusConnection>
 #include <QKeyEvent>
 #include <QMimeData>
+#include <QSocketNotifier>
 #include <QThread>
 #include <QTimer>
 #include <qscreen.h>
@@ -65,7 +48,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include <QQuickItem>
 #include <QQuickView>
 
-#include <QX11Info>
+#include <private/qtx11extras_p.h>
 // Wayland
 #include <wayland-client.h>
 #include <wayland-ksld-client-protocol.h>
@@ -76,6 +59,9 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 #include <xcb/xcb.h>
 
+#include "pamauthenticator.h"
+#include "pamauthenticators.h"
+
 // this is usable to fake a "screensaver" installation for testing
 // *must* be "0" for every public commit!
 #define TEST_SCREENSAVER 0
@@ -83,6 +69,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 static const QString s_plasmaShellService = QStringLiteral("org.kde.plasmashell");
 static const QString s_osdServicePath = QStringLiteral("/org/kde/osdService");
 static const QString s_osdServiceInterface = QStringLiteral("org.kde.osdService");
+
+using namespace Qt::Literals;
 
 namespace ScreenLocker
 {
@@ -95,13 +83,32 @@ void disableDrKonqi()
 // that would enable drkonqi
 Q_CONSTRUCTOR_FUNCTION(disableDrKonqi)
 
+// Verify that a package or its fallback is using the right API
+bool verifyPackageApi(const KPackage::Package &package)
+{
+    if (package.metadata().value(QStringLiteral("X-Plasma-APIVersion"), QStringLiteral("1")).toInt() >= 2) {
+        return true;
+    }
+
+    if (!package.filePath("lockscreenmainscript").contains(package.path())) {
+        // The current package does not contain the lock screen and we are
+        // using the fallback package. So check to see if that package has
+        // the right version instead.
+        if (package.fallbackPackage().metadata().value(QStringLiteral("X-Plasma-APIVersion"), QStringLiteral("1")).toInt() >= 2) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 class FocusOutEventFilter : public QAbstractNativeEventFilter
 {
 public:
-    bool nativeEventFilter(const QByteArray &eventType, void *message, long int *result) override
+    bool nativeEventFilter(const QByteArray &eventType, void *message, qintptr *result) override
     {
         Q_UNUSED(result)
-        if (qstrcmp(eventType, "xcb_generic_event_t") != 0) {
+        if (eventType != QByteArrayLiteral("xcb_generic_event_t")) {
             return false;
         }
         xcb_generic_event_t *event = reinterpret_cast<xcb_generic_event_t *>(message);
@@ -109,6 +116,19 @@ public:
             return true;
         }
         return false;
+    }
+};
+
+class WallpaperItem : public WallpaperIntegration
+{
+    Q_OBJECT
+public:
+    explicit WallpaperItem(QQuickItem *parent = nullptr)
+        : WallpaperIntegration(parent)
+    {
+        setConfig(KScreenSaverSettingsBase::self()->sharedConfig());
+        setPluginName(KScreenSaverSettingsBase::self()->wallpaperPluginId());
+        init();
     }
 };
 
@@ -123,12 +143,15 @@ UnlockApp::UnlockApp(int &argc, char **argv)
     , m_graceTime(0)
     , m_noLock(false)
     , m_defaultToSwitchUser(false)
-    , m_wallpaperIntegration(new WallpaperIntegration(this))
-    , m_lnfIntegration(new LnFIntegration(this))
+    , m_shellIntegration(new ShellIntegration(this))
 {
-    m_authenticator = createAuthenticator();
-    // It's a queued connection to give the QML part time to eventually execute code connected to Authenticator::succeeded if any
-    connect(m_authenticator, &Authenticator::succeeded, this, &QCoreApplication::quit, Qt::QueuedConnection);
+    auto interactive = std::make_unique<PamAuthenticator>(QStringLiteral(KSCREENLOCKER_PAM_SERVICE), KUser().loginName());
+    std::vector<std::unique_ptr<PamAuthenticator>> noninteractive;
+    noninteractive.push_back(
+        std::make_unique<PamAuthenticator>(QStringLiteral(KSCREENLOCKER_PAM_FINGERPRINT_SERVICE), KUser().loginName(), PamAuthenticator::Fingerprint));
+    noninteractive.push_back(
+        std::make_unique<PamAuthenticator>(QStringLiteral(KSCREENLOCKER_PAM_SMARTCARD_SERVICE), KUser().loginName(), PamAuthenticator::Smartcard));
+    m_authenticators = new PamAuthenticators(std::move(interactive), std::move(noninteractive), this);
     initialize();
 
     if (QX11Info::isPlatformX11()) {
@@ -140,7 +163,7 @@ UnlockApp::~UnlockApp()
 {
     // workaround QTBUG-55460
     // will be fixed when themes port to QQC2
-    for (auto view : qAsConst(m_views)) {
+    for (auto view : std::as_const(m_views)) {
         if (QQuickItem *focusItem = view->activeFocusItem()) {
             focusItem->setFocus(false);
         }
@@ -150,19 +173,9 @@ UnlockApp::~UnlockApp()
     if (m_ksldInterface) {
         org_kde_ksld_destroy(m_ksldInterface);
     }
-    if (m_ksldRegistry) {
-        delete m_ksldRegistry;
+    if (m_display) {
+        wl_display_disconnect(m_display);
     }
-    if (m_ksldConnection) {
-        m_ksldConnection->deleteLater();
-        m_ksldConnectionThread->quit();
-        m_ksldConnectionThread->wait();
-    }
-}
-
-Authenticator *UnlockApp::createAuthenticator()
-{
-    return new Authenticator(AuthenticationMode::Direct, this);
 }
 
 void UnlockApp::initialize()
@@ -174,25 +187,16 @@ void UnlockApp::initialize()
     connect(m_resetRequestIgnoreTimer, &QTimer::timeout, this, &UnlockApp::resetRequestIgnore);
 
     KScreenSaverSettingsBase::self()->load();
-    KPackage::Package package = KPackage::PackageLoader::self()->loadPackage(QStringLiteral("Plasma/LookAndFeel"));
-    KConfigGroup cg(KSharedConfig::openConfig(QStringLiteral("kdeglobals")), "KDE");
-    m_packageName = cg.readEntry("LookAndFeelPackage", QString());
-    if (!m_packageName.isEmpty()) {
-        package.setPath(m_packageName);
-    }
-    if (!KScreenSaverSettingsBase::theme().isEmpty()) {
-        package.setPath(KScreenSaverSettingsBase::theme());
-    }
 
-    m_mainQmlPath = package.fileUrl("lockscreenmainscript");
+    setShell(m_shellIntegration->defaultShell());
 
-    m_wallpaperIntegration->setConfig(KScreenSaverSettingsBase::self()->sharedConfig());
-    m_wallpaperIntegration->setPluginName(KScreenSaverSettingsBase::self()->wallpaperPluginId());
-    m_wallpaperIntegration->init();
+    // The root of wallpaper packages will be a WallpaperItem we provide the same API via WallpaperIntegration
+    // although with most things nooping
+    constexpr const char *uri = "org.kde.plasma.plasmoid";
+    qmlRegisterType<WallpaperItem>(uri, 2, 0, "WallpaperItem");
 
-    m_lnfIntegration->setPackage(package);
-    m_lnfIntegration->setConfig(KScreenSaverSettingsBase::self()->sharedConfig());
-    m_lnfIntegration->init();
+    m_wallpaperPackage = KPackage::PackageLoader::self()->loadPackage(QStringLiteral("Plasma/Wallpaper"));
+    m_wallpaperPackage.setPath(KScreenSaverSettingsBase::self()->wallpaperPluginId());
 
     const KUser user;
     const QString fullName = user.property(KUser::FullName).toString();
@@ -202,8 +206,12 @@ void UnlockApp::initialize()
 
     installEventFilter(this);
 
-    QDBusConnection::sessionBus()
-        .connect(s_plasmaShellService, s_osdServicePath, s_osdServiceInterface, QStringLiteral("osdProgress"), this, SLOT(osdProgress(QString, int, QString)));
+    QDBusConnection::sessionBus().connect(s_plasmaShellService,
+                                          s_osdServicePath,
+                                          s_osdServiceInterface,
+                                          QStringLiteral("osdProgress"),
+                                          this,
+                                          SLOT(osdProgress(QString, int, int, QString)));
     QDBusConnection::sessionBus()
         .connect(s_plasmaShellService, s_osdServicePath, s_osdServiceInterface, QStringLiteral("osdText"), this, SLOT(osdText(QString, QString)));
 
@@ -219,7 +227,7 @@ QWindow *UnlockApp::getActiveScreen()
         return activeScreen;
     }
 
-    for (KQuickAddons::QuickViewSharedEngine *view : qAsConst(m_views)) {
+    for (PlasmaQuick::QuickViewSharedEngine *view : std::as_const(m_views)) {
         if (view->geometry().contains(QCursor::pos())) {
             activeScreen = view;
             break;
@@ -232,40 +240,61 @@ QWindow *UnlockApp::getActiveScreen()
     return activeScreen;
 }
 
-void UnlockApp::loadWallpaperPlugin(KQuickAddons::QuickViewSharedEngine *view)
+PlasmaQuick::SharedQmlEngine *UnlockApp::loadWallpaperPlugin(PlasmaQuick::QuickViewSharedEngine *view)
 {
-    auto package = m_wallpaperIntegration->package();
-    if (!package.isValid()) {
+    if (!m_wallpaperPackage.isValid()) {
         qCWarning(KSCREENLOCKER_GREET) << "Error loading the wallpaper, no valid package loaded";
+        return nullptr;
+    }
+
+    auto qmlObject = new PlasmaQuick::SharedQmlEngine(view);
+    qmlObject->setInitializationDelayed(true);
+    qmlObject->setSource(QUrl::fromLocalFile(m_wallpaperPackage.filePath("mainscript")));
+    view->setProperty("wallpaperGraphicsObject", QVariant::fromValue(qmlObject));
+
+    auto item = qobject_cast<WallpaperItem *>(qmlObject->rootObject());
+    if (item) {
+        qmlObject->rootContext()->setContextProperty(QStringLiteral("wallpaper"), item);
+        view->rootContext()->setContextProperty(QStringLiteral("wallpaper"), item);
+        view->rootContext()->setContextProperty(QStringLiteral("wallpaperIntegration"), item);
+    } else {
+        qCWarning(KSCREENLOCKER_GREET) << "Root item not a WallpaperItem";
+    }
+    return qmlObject;
+}
+
+void UnlockApp::setWallpaperItemProperties(PlasmaQuick::SharedQmlEngine *wallpaperObject, PlasmaQuick::QuickViewSharedEngine *view)
+{
+    if (!wallpaperObject) {
         return;
     }
 
-    auto qmlObject = new KDeclarative::QmlObjectSharedEngine(view);
-    qmlObject->setInitializationDelayed(true);
-    qmlObject->setPackage(package);
-    qmlObject->rootContext()->setContextProperty(QStringLiteral("wallpaper"), m_wallpaperIntegration);
-    view->setProperty("wallpaperGraphicsObject", QVariant::fromValue(qmlObject));
-    connect(qmlObject, &KDeclarative::QmlObject::finished, this, [this, qmlObject, view] {
-        auto item = qobject_cast<QQuickItem *>(qmlObject->rootObject());
-        if (!item) {
-            qCWarning(KSCREENLOCKER_GREET) << "Wallpaper needs to be a QtQuick Item";
-            return;
-        }
-        item->setParentItem(view->rootObject());
-        item->setZ(-1000);
+    auto item = qobject_cast<QQuickItem *>(wallpaperObject->rootObject());
+    if (!item) {
+        qCWarning(KSCREENLOCKER_GREET) << "Wallpaper needs to be a QtQuick Item";
+        return;
+    }
+    item->setParentItem(view->rootObject());
+    item->setZ(-1000);
 
-        // set anchors
-        QQmlExpression expr(qmlObject->engine()->rootContext(), item, QStringLiteral("parent"));
-        QQmlProperty prop(item, QStringLiteral("anchors.fill"));
-        prop.write(expr.evaluate());
-
-        view->rootContext()->setContextProperty(QStringLiteral("wallpaper"), item);
-        view->rootContext()->setContextProperty(QStringLiteral("wallpaperIntegration"), m_wallpaperIntegration);
-    });
+    // set anchors
+    QQmlExpression expr(wallpaperObject->engine()->rootContext(), item, QStringLiteral("parent"));
+    QQmlProperty prop(item, QStringLiteral("anchors.fill"));
+    prop.write(expr.evaluate());
 }
 
 void UnlockApp::initialViewSetup()
 {
+    qmlRegisterUncreatableType<PamAuthenticator>("org.kde.kscreenlocker",
+                                                 1,
+                                                 0,
+                                                 "Authenticator",
+                                                 QStringLiteral("authenticators must be obtained from the context"));
+    qmlRegisterUncreatableType<PamAuthenticators>("org.kde.kscreenlocker",
+                                                  1,
+                                                  0,
+                                                  "Authenticators",
+                                                  QStringLiteral("authenticators must be obtained from the context"));
     for (QScreen *screen : screens()) {
         handleScreen(screen);
     }
@@ -288,10 +317,10 @@ void UnlockApp::handleScreen(QScreen *screen)
     });
 }
 
-KQuickAddons::QuickViewSharedEngine *UnlockApp::createViewForScreen(QScreen *screen)
+PlasmaQuick::QuickViewSharedEngine *UnlockApp::createViewForScreen(QScreen *screen)
 {
     // create the view
-    auto *view = new KQuickAddons::QuickViewSharedEngine();
+    auto *view = new PlasmaQuick::QuickViewSharedEngine();
 
     view->setColor(Qt::black);
     view->setScreen(screen);
@@ -301,10 +330,12 @@ KQuickAddons::QuickViewSharedEngine *UnlockApp::createViewForScreen(QScreen *scr
         view->setGeometry(geo);
     });
 
-    // first create KDeclarative, to be sure that it created a KIO Network Factory
-    KDeclarative::KDeclarative declarative;
-    declarative.setDeclarativeEngine(view->engine());
-    declarative.setupBindings();
+    view->engine()->setProperty("_kirigamiTheme", QStringLiteral("KirigamiPlasmaStyle"));
+    view->engine()->rootContext()->setContextObject(new KLocalizedContext(view->engine().get()));
+    auto oldFactory = view->engine()->networkAccessManagerFactory();
+    view->engine()->setNetworkAccessManagerFactory(nullptr);
+    delete oldFactory;
+    view->engine()->setNetworkAccessManagerFactory(new NoAccessNetworkAccessManagerFactory);
 
     if (!m_testing) {
         if (QX11Info::isPlatformX11()) {
@@ -317,19 +348,36 @@ KQuickAddons::QuickViewSharedEngine *UnlockApp::createViewForScreen(QScreen *scr
     if (m_ksldInterface) {
         view->create();
         org_kde_ksld_x11window(m_ksldInterface, view->winId());
-        wl_display_flush(m_ksldConnection->display());
+        wl_display_flush(m_display);
     }
 
     // engine stuff
     QQmlContext *context = view->engine()->rootContext();
+    connect(view->engine().get(), &QQmlEngine::quit, this, [this]() {
+        if (m_authenticators->isUnlocked()) {
+            std::cout << "Unlocked" << std::endl;
+            QCoreApplication::quit();
+        } else {
+            qCWarning(KSCREENLOCKER_GREET) << "Greeter tried to quit without being unlocked";
+        }
+    });
 
     context->setContextProperty(QStringLiteral("kscreenlocker_userName"), m_userName);
     context->setContextProperty(QStringLiteral("kscreenlocker_userImage"), m_userImage);
-    context->setContextProperty(QStringLiteral("authenticator"), m_authenticator);
+    context->setContextProperty(QStringLiteral("authenticator"), m_authenticators);
     context->setContextProperty(QStringLiteral("org_kde_plasma_screenlocker_greeter_interfaceVersion"), 2);
     context->setContextProperty(QStringLiteral("org_kde_plasma_screenlocker_greeter_view"), view);
     context->setContextProperty(QStringLiteral("defaultToSwitchUser"), m_defaultToSwitchUser);
-    context->setContextProperty(QStringLiteral("config"), m_lnfIntegration->configuration());
+    context->setContextProperty(QStringLiteral("config"), m_shellIntegration->configuration());
+
+    auto wallpaperObj = loadWallpaperPlugin(view);
+    if (auto object = view->property("wallpaperGraphicsObject").value<PlasmaQuick::SharedQmlEngine *>()) {
+        // initialize with our size to avoid as much resize events as possible
+        object->completeInitialization({
+            {QStringLiteral("width"), view->width()},
+            {QStringLiteral("height"), view->height()},
+        });
+    }
 
     view->setSource(m_mainQmlPath);
     // on error, load the fallback lockscreen to not lock the user out of the system
@@ -337,17 +385,26 @@ KQuickAddons::QuickViewSharedEngine *UnlockApp::createViewForScreen(QScreen *scr
         static const QUrl fallbackUrl(QUrl(QStringLiteral("qrc:/fallbacktheme/LockScreen.qml")));
 
         qCWarning(KSCREENLOCKER_GREET) << "Failed to load lockscreen QML, falling back to built-in locker";
+        for (const auto &error : view->errors()) {
+            qCWarning(KSCREENLOCKER_GREET) << error;
+        }
 
         m_mainQmlPath = fallbackUrl;
         view->setSource(fallbackUrl);
-    }
-    view->setResizeMode(KQuickAddons::QuickViewSharedEngine::SizeRootObjectToView);
 
-    // overwrite the factory set by kdeclarative
-    auto oldFactory = view->engine()->networkAccessManagerFactory();
-    view->engine()->setNetworkAccessManagerFactory(nullptr);
-    delete oldFactory;
-    view->engine()->setNetworkAccessManagerFactory(new NoAccessNetworkAccessManagerFactory);
+        if (view->status() != QQmlComponent::Ready) {
+            qCWarning(KSCREENLOCKER_GREET) << "Failed to load the fallback lockscreen QML, something went really wrong! Terminating...";
+            for (const auto &error : view->errors()) {
+                qCWarning(KSCREENLOCKER_GREET) << error;
+            }
+            std::terminate();
+        }
+    }
+    view->setResizeMode(PlasmaQuick::QuickViewSharedEngine::SizeRootObjectToView);
+
+    // we need to set this wallpaper properties separately after the lockscreen QML is loaded
+    // this is because we need to anchor to the view that gets loaded
+    setWallpaperItemProperties(wallpaperObj, view);
 
     QQmlProperty lockProperty(view->rootObject(), QStringLiteral("locked"));
     lockProperty.write(m_immediateLock || (!m_noLock && !m_delayedLockTimer));
@@ -367,41 +424,28 @@ KQuickAddons::QuickViewSharedEngine *UnlockApp::createViewForScreen(QScreen *scr
     // verify that the engine's controller didn't change
     Q_ASSERT(dynamic_cast<NoAccessNetworkAccessManagerFactory *>(view->engine()->networkAccessManagerFactory()));
 
-    loadWallpaperPlugin(view);
-    if (auto object = view->property("wallpaperGraphicsObject").value<KDeclarative::QmlObjectSharedEngine *>()) {
-        // initialize with our size to avoid as much resize events as possible
-        object->completeInitialization({
-            {QStringLiteral("width"), view->width()},
-            {QStringLiteral("height"), view->height()},
-        });
-    }
-
     if (KWindowSystem::isPlatformWayland()) {
         if (auto layerShellWindow = LayerShellQt::Window::get(view)) {
             layerShellWindow->setExclusiveZone(-1);
             layerShellWindow->setLayer(LayerShellQt::Window::LayerOverlay);
+            layerShellWindow->setKeyboardInteractivity(LayerShellQt::Window::KeyboardInteractivityExclusive);
         }
     }
 
-    // on Wayland we may not use fullscreen as that puts all windows on one screen
-    if (m_testing || QX11Info::isPlatformX11()) {
-        view->show();
-    } else {
-        view->showFullScreen();
-    }
+    // showFullScreen is implicit on X11 (through geometry and hints) and Wayland (layer-shell)
+    view->show();
     view->raise();
 
     auto onFrameSwapped = [this, view] {
         markViewsAsVisible(view);
     };
-    connect(view, &QQuickWindow::frameSwapped, this, onFrameSwapped, Qt::QueuedConnection);
+    connect(view, &QQuickWindow::frameSwapped, this, onFrameSwapped, static_cast<Qt::ConnectionType>(Qt::QueuedConnection | Qt::SingleShotConnection));
 
     return view;
 }
 
-void UnlockApp::markViewsAsVisible(KQuickAddons::QuickViewSharedEngine *view)
+void UnlockApp::markViewsAsVisible(PlasmaQuick::QuickViewSharedEngine *view)
 {
-    disconnect(view, &QQuickWindow::frameSwapped, this, nullptr);
     QQmlProperty showProperty(view->rootObject(), QStringLiteral("viewVisible"));
     showProperty.write(true);
     // random state update, actually rather required on init only
@@ -431,7 +475,7 @@ void UnlockApp::getFocus()
     }
     // this loop is required to make the qml/graphicsscene properly handle the shared keyboard input
     // ie. "type something into the box of every greeter"
-    for (KQuickAddons::QuickViewSharedEngine *view : qAsConst(m_views)) {
+    for (PlasmaQuick::QuickViewSharedEngine *view : std::as_const(m_views)) {
         if (!m_testing) {
             view->setKeyboardGrabEnabled(true); // TODO - check whether this still works in master!
         }
@@ -444,12 +488,14 @@ void UnlockApp::getFocus()
     activeScreen->requestActivate();
 }
 
-void UnlockApp::setLockedPropertyOnViews()
+void UnlockApp::graceLockEnded()
 {
+    m_authenticators->setGraceLocked(false);
+
     delete m_delayedLockTimer;
     m_delayedLockTimer = nullptr;
 
-    for (KQuickAddons::QuickViewSharedEngine *view : qAsConst(m_views)) {
+    for (PlasmaQuick::QuickViewSharedEngine *view : std::as_const(m_views)) {
         QQmlProperty lockProperty(view->rootObject(), QStringLiteral("locked"));
         lockProperty.write(true);
     }
@@ -468,6 +514,7 @@ void UnlockApp::suspendToRam()
 
     m_ignoreRequests = true;
     m_resetRequestIgnoreTimer->start();
+    m_authenticators->cancel();
 
     PowerManagement::instance()->suspend();
 }
@@ -480,39 +527,50 @@ void UnlockApp::suspendToDisk()
 
     m_ignoreRequests = true;
     m_resetRequestIgnoreTimer->start();
+    m_authenticators->cancel();
 
     PowerManagement::instance()->hibernate();
 }
 
 void UnlockApp::setTesting(bool enable)
 {
+    qCDebug(KSCREENLOCKER_GREET) << "Testing mode enabled:" << enable;
+
     m_testing = enable;
     if (m_views.isEmpty()) {
         return;
     }
     if (enable) {
         // remove bypass window manager hint
-        for (KQuickAddons::QuickViewSharedEngine *view : qAsConst(m_views)) {
+        for (PlasmaQuick::QuickViewSharedEngine *view : std::as_const(m_views)) {
             view->setFlags(view->flags() & ~Qt::X11BypassWindowManagerHint);
         }
     } else {
-        for (KQuickAddons::QuickViewSharedEngine *view : qAsConst(m_views)) {
+        for (PlasmaQuick::QuickViewSharedEngine *view : std::as_const(m_views)) {
             view->setFlags(view->flags() | Qt::X11BypassWindowManagerHint);
         }
     }
 }
 
-void UnlockApp::setTheme(const QString &theme)
+void UnlockApp::setShell(const QString &shell)
 {
-    if (theme.isEmpty() || !m_testing) {
-        return;
+    m_packageName = shell;
+    KPackage::Package package = KPackage::PackageLoader::self()->loadPackage(QStringLiteral("Plasma/Shell"));
+
+    if (!m_packageName.isEmpty()) {
+        package.setPath(m_packageName);
     }
 
-    m_packageName = theme;
-    KPackage::Package package = KPackage::PackageLoader::self()->loadPackage(QStringLiteral("Plasma/LookAndFeel"));
-    package.setPath(m_packageName);
+    if (!verifyPackageApi(package)) {
+        qCWarning(KSCREENLOCKER_GREET) << "Lockscreen QML outdated, falling back to default";
+        package.setPath(QStringLiteral("org.kde.plasma.desktop"));
+    }
 
     m_mainQmlPath = package.fileUrl("lockscreenmainscript");
+
+    m_shellIntegration->setPackage(package);
+    m_shellIntegration->setConfig(KScreenSaverSettingsBase::self()->sharedConfig());
+    m_shellIntegration->init();
 }
 
 void UnlockApp::setImmediateLock(bool immediate)
@@ -523,14 +581,14 @@ void UnlockApp::setImmediateLock(bool immediate)
 void UnlockApp::lockImmediately()
 {
     setImmediateLock(true);
-    setLockedPropertyOnViews();
+    graceLockEnded();
 }
 
 bool UnlockApp::eventFilter(QObject *obj, QEvent *event)
 {
     if (obj != this && event->type() == QEvent::Show) {
-        KQuickAddons::QuickViewSharedEngine *view = nullptr;
-        for (KQuickAddons::QuickViewSharedEngine *v : qAsConst(m_views)) {
+        PlasmaQuick::QuickViewSharedEngine *view = nullptr;
+        for (PlasmaQuick::QuickViewSharedEngine *v : std::as_const(m_views)) {
             if (v == obj) {
                 view = v;
                 break;
@@ -553,13 +611,25 @@ bool UnlockApp::eventFilter(QObject *obj, QEvent *event)
     }
 
     if (event->type() == QEvent::KeyPress) { // react if saver is visible
-        shareEvent(event, qobject_cast<KQuickAddons::QuickViewSharedEngine *>(obj));
+        shareEvent(event, qobject_cast<PlasmaQuick::QuickViewSharedEngine *>(obj));
         return false; // we don't care
     } else if (event->type() == QEvent::KeyRelease) { // conditionally reshow the saver
         QKeyEvent *ke = static_cast<QKeyEvent *>(event);
         if (ke->key() != Qt::Key_Escape) {
-            shareEvent(event, qobject_cast<KQuickAddons::QuickViewSharedEngine *>(obj));
+            shareEvent(event, qobject_cast<PlasmaQuick::QuickViewSharedEngine *>(obj));
             return false; // irrelevant
+        } else {
+            auto dpms = new KScreen::Dpms(this);
+            if (dpms->isSupported()) {
+                connect(dpms, &KScreen::Dpms::hasPendingChangesChanged, this, [dpms](bool hasPendingChanges) {
+                    if (!hasPendingChanges) {
+                        dpms->deleteLater();
+                    }
+                });
+                dpms->switchMode(KScreen::Dpms::Off);
+            } else {
+                dpms->deleteLater();
+            }
         }
         return true; // don't pass
     }
@@ -574,7 +644,7 @@ bool UnlockApp::eventFilter(QObject *obj, QEvent *event)
  * even if the focus is actually on a powered off screen.
  */
 
-void UnlockApp::shareEvent(QEvent *e, KQuickAddons::QuickViewSharedEngine *from)
+void UnlockApp::shareEvent(QEvent *e, PlasmaQuick::QuickViewSharedEngine *from)
 {
     // from can be NULL any time (because the parameter is passed as qobject_cast)
     // m_views.contains(from) is atm. supposed to be true but required if any further
@@ -585,7 +655,7 @@ void UnlockApp::shareEvent(QEvent *e, KQuickAddons::QuickViewSharedEngine *from)
         // Any change in regarded event processing shall be tested thoroughly!
         removeEventFilter(this); // prevent recursion!
         const bool accepted = e->isAccepted(); // store state
-        for (KQuickAddons::QuickViewSharedEngine *view : qAsConst(m_views)) {
+        for (PlasmaQuick::QuickViewSharedEngine *view : std::as_const(m_views)) {
             if (view != from) {
                 QCoreApplication::sendEvent(view, e);
                 e->setAccepted(accepted);
@@ -601,9 +671,10 @@ void UnlockApp::setGraceTime(int milliseconds)
     if (milliseconds < 0 || m_delayedLockTimer || m_noLock || m_immediateLock) {
         return;
     }
+    m_authenticators->setGraceLocked(true);
     m_delayedLockTimer = new QTimer(this);
     m_delayedLockTimer->setSingleShot(true);
-    connect(m_delayedLockTimer, &QTimer::timeout, this, &UnlockApp::setLockedPropertyOnViews);
+    connect(m_delayedLockTimer, &QTimer::timeout, this, &UnlockApp::graceLockEnded);
     m_delayedLockTimer->start(m_graceTime);
 }
 
@@ -619,54 +690,40 @@ void UnlockApp::setDefaultToSwitchUser(bool defaultToSwitchUser)
 
 void UnlockApp::setKsldSocket(int socket)
 {
-    using namespace KWayland::Client;
-    m_ksldConnection = new ConnectionThread;
-    m_ksldConnection->setSocketFd(socket);
-
-    m_ksldRegistry = new Registry();
-    EventQueue *queue = new EventQueue(m_ksldRegistry);
-
-    connect(m_ksldRegistry, &Registry::interfaceAnnounced, this, [this, queue](QByteArray interface, quint32 name, quint32 version) {
+    m_display = wl_display_connect_to_fd(socket);
+    auto socketnotifier = new QSocketNotifier(socket, QSocketNotifier::Read, this);
+    connect(socketnotifier, &QSocketNotifier::activated, this, [this] {
+        wl_display_dispatch(m_display);
+    });
+    auto registry = wl_display_get_registry(m_display);
+    auto globalAdded = [](void *data, struct wl_registry *registry, uint32_t name, const char *interface, uint32_t version) {
         Q_UNUSED(version)
-        if (interface != QByteArrayLiteral("org_kde_ksld")) {
+        if (interface != "org_kde_ksld"_ba) {
             return;
         }
+        auto self = static_cast<UnlockApp *>(data);
         // bind version 1 as we dropped all the V2 features
-        m_ksldInterface = reinterpret_cast<org_kde_ksld *>(wl_registry_bind(*m_ksldRegistry, name, &org_kde_ksld_interface, 1));
-        queue->addProxy(m_ksldInterface);
-
-        for (auto v : qAsConst(m_views)) {
-            org_kde_ksld_x11window(m_ksldInterface, v->winId());
-            wl_display_flush(m_ksldConnection->display());
+        self->m_ksldInterface = static_cast<org_kde_ksld *>(wl_registry_bind(registry, name, &org_kde_ksld_interface, 1));
+        for (auto v : std::as_const(self->m_views)) {
+            org_kde_ksld_x11window(self->m_ksldInterface, v->winId());
+            wl_display_flush(self->m_display);
         }
-    });
-
-    connect(
-        m_ksldConnection,
-        &ConnectionThread::connected,
-        this,
-        [this, queue] {
-            m_ksldRegistry->create(m_ksldConnection);
-            queue->setup(m_ksldConnection);
-            m_ksldRegistry->setEventQueue(queue);
-            m_ksldRegistry->setup();
-            wl_display_flush(m_ksldConnection->display());
-        },
-        Qt::QueuedConnection);
-
-    m_ksldConnectionThread = new QThread(this);
-    m_ksldConnection->moveToThread(m_ksldConnectionThread);
-    m_ksldConnectionThread->start();
-    m_ksldConnection->initConnection();
+    };
+    auto noopGlobalRemove = [](void *, struct wl_registry *, uint32_t) {};
+    static const wl_registry_listener registryListener = wl_registry_listener{globalAdded, noopGlobalRemove};
+    wl_registry_add_listener(registry, &registryListener, this);
+    wl_display_flush(m_display);
 }
 
-void UnlockApp::osdProgress(const QString &icon, int percent, const QString &additionalText)
+void UnlockApp::osdProgress(const QString &icon, int percent, int maximumPercent, const QString &additionalText)
 {
-    for (auto v : qAsConst(m_views)) {
+    for (auto v : std::as_const(m_views)) {
         auto osd = v->rootObject()->findChild<QQuickItem *>(QStringLiteral("onScreenDisplay"));
         if (!osd) {
             continue;
         }
+        // Update max value first to prevent value from being clamped
+        osd->setProperty("osdMaxValue", maximumPercent);
         osd->setProperty("osdValue", percent);
         osd->setProperty("osdAdditionalText", additionalText);
         osd->setProperty("showingProgress", true);
@@ -677,7 +734,7 @@ void UnlockApp::osdProgress(const QString &icon, int percent, const QString &add
 
 void UnlockApp::osdText(const QString &icon, const QString &additionalText)
 {
-    for (auto v : qAsConst(m_views)) {
+    for (auto v : std::as_const(m_views)) {
         auto osd = v->rootObject()->findChild<QQuickItem *>(QStringLiteral("onScreenDisplay"));
         if (!osd) {
             continue;
@@ -706,3 +763,5 @@ void UnlockApp::updateCanHibernate()
 }
 
 } // namespace
+
+#include "greeterapp.moc"

@@ -1,34 +1,22 @@
-/********************************************************************
- KSld - the KDE Screenlocker Daemon
- This file is part of the KDE project.
+/*
+SPDX-FileCopyrightText: 1999 Martin R. Jones <mjones@kde.org>
+SPDX-FileCopyrightText: 2002 Luboš Luňák <l.lunak@kde.org>
+SPDX-FileCopyrightText: 2003 Oswald Buddenhagen <ossi@kde.org>
+SPDX-FileCopyrightText: 2008 Chani Armitage <chanika@gmail.com>
+SPDX-FileCopyrightText: 2011 Martin Gräßlin <mgraesslin@kde.org>
+SPDX-FileCopyrightText: 2015 Bhushan Shah <bhush94@gmail.com>
 
- Copyright (C) 1999 Martin R. Jones <mjones@kde.org>
- Copyright (C) 2002 Luboš Luňák <l.lunak@kde.org>
- Copyright (C) 2003 Oswald Buddenhagen <ossi@kde.org>
- Copyright (C) 2008 Chani Armitage <chanika@gmail.com>
- Copyright (C) 2011 Martin Gräßlin <mgraesslin@kde.org>
- Copyright (C) 2015 Bhushan Shah <bhush94@gmail.com>
-
-This program is free software; you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2 of the License, or
-(at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*********************************************************************/
+SPDX-License-Identifier: GPL-2.0-or-later
+*/
 
 #include "abstractlocker.h"
+#include "kscreenlocker_logging.h"
 
 #include <QApplication>
+#include <QDBusConnection>
+#include <QDBusConnectionInterface>
 #include <QPainter>
 #include <QScreen>
-#include <QtDBus>
 
 #include <KLocalizedString>
 
@@ -38,6 +26,7 @@ BackgroundWindow::BackgroundWindow(AbstractLocker *lock)
     : QRasterWindow()
     , m_lock(lock)
 {
+    qCDebug(KSCREENLOCKER) << "Creating BackgroundWindow";
     setFlags(Qt::X11BypassWindowManagerHint | Qt::FramelessWindowHint);
     setProperty("org_kde_ksld_emergency", true);
 }
@@ -46,35 +35,41 @@ BackgroundWindow::~BackgroundWindow() = default;
 
 void BackgroundWindow::paintEvent(QPaintEvent *)
 {
+    qCDebug(KSCREENLOCKER) << "Painting BackgroundWindow";
     QPainter p(this);
     p.fillRect(0, 0, width(), height(), Qt::black);
     if (m_greeterFailure) {
         auto text = ki18n(
             "The screen locker is broken and unlocking is not possible anymore.\n"
-            "In order to unlock it either ConsoleKit or LoginD is needed, none of\n"
-            "which could be found on your system.");
-        auto text_ck = ki18n(
-            "The screen locker is broken and unlocking is not possible anymore.\n"
-            "In order to unlock switch to a virtual terminal (e.g. Ctrl+Alt+F2),\n"
-            "log in as root and execute the command:\n\n"
-            "# ck-unlock-session <session-name>\n\n");
-        auto text_ld = ki18n(
-            "The screen locker is broken and unlocking is not possible anymore.\n"
-            "In order to unlock switch to a virtual terminal (e.g. Ctrl+Alt+F2),\n"
-            "log in and execute the command:\n\n"
-            "loginctl unlock-session %1\n\n"
-            "Then log out of the virtual session by pressing Ctrl+D, and switch\n"
-            "back to the running session (Ctrl+Alt+F%2).");
+            "In order to unlock it either ConsoleKit or LoginD is needed, neither\n"
+            "of which could be found on your system.");
+        auto text_ck = ki18nc("%1 = other terminal",
+                              "The screen locker is broken and unlocking is not possible anymore.\n"
+                              "In order to unlock it, switch to a virtual terminal (e.g. Ctrl+Alt+F%1),\n"
+                              "log in as root and execute the command:\n\n"
+                              "# ck-unlock-session <session-name>\n\n");
+        auto text_ld = ki18nc("%1 = other terminal, %2 = session ID, %3 = this terminal",
+                              "The screen locker is broken and unlocking is not possible anymore.\n"
+                              "In order to unlock it, switch to a virtual terminal (e.g. Ctrl+Alt+F%1),\n"
+                              "log in to your account and execute the command:\n\n"
+                              "loginctl unlock-session %2\n\n"
+                              "Then log out of the virtual session by pressing Ctrl+D, and switch\n"
+                              "back to the running session (Ctrl+Alt+F%3).\n"
+                              "Should you have forgotten the instructions, you can get back to this\n"
+                              "screen by pressing Ctrl+Alt+F%3\n\n");
 
         auto haveService = [](QString service) {
             return QDBusConnection::systemBus().interface()->isServiceRegistered(service);
         };
         if (haveService(QStringLiteral("org.freedesktop.ConsoleKit"))) {
-            text = text_ck;
+            auto virtualTerminalId = qgetenv("XDG_VTNR").toInt();
+            text = text_ck.subs(virtualTerminalId == 2 ? 1 : 2);
         } else if (haveService(QStringLiteral("org.freedesktop.login1"))) {
             text = text_ld;
+            auto virtualTerminalId = qgetenv("XDG_VTNR").toInt();
+            text = text.subs(virtualTerminalId == 2 ? 1 : 2);
             text = text.subs(QString::fromLocal8Bit(qgetenv("XDG_SESSION_ID")));
-            text = text.subs(QString::fromLocal8Bit(qgetenv("XDG_VTNR")));
+            text = text.subs(virtualTerminalId);
         }
 
         p.setPen(Qt::white);
@@ -97,6 +92,7 @@ void BackgroundWindow::paintEvent(QPaintEvent *)
 
 void BackgroundWindow::emergencyShow()
 {
+    qCDebug(KSCREENLOCKER) << "BackgroundWindow::emergencyShow() called";
     m_greeterFailure = true;
     update();
     show();
@@ -128,3 +124,5 @@ void AbstractLocker::addAllowedWindow(quint32 windows)
 }
 
 }
+
+#include "moc_abstractlocker.cpp"
