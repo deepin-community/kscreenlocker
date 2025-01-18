@@ -1,26 +1,16 @@
-/********************************************************************
- KSld - the KDE Screenlocker Daemon
- This file is part of the KDE project.
+/*
+SPDX-FileCopyrightText: 2014 Martin Gräßlin <mgraesslin@kde.org>
 
-Copyright (C) 2014 Martin Gräßlin <mgraesslin@kde.org>
-
-This program is free software; you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2 of the License, or
-(at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*********************************************************************/
+SPDX-License-Identifier: GPL-2.0-or-later
+*/
 // own
 #include <config-kscreenlocker.h>
+// KF
+#include <KLibexec>
 // Qt
-#include <QtTest>
+#include <QProcess>
+#include <QSignalSpy>
+#include <QTest>
 // system
 #include <signal.h>
 
@@ -87,19 +77,23 @@ void KillTest::testKill_data()
 void KillTest::testKill()
 {
     QProcess greeter(this);
-    greeter.setReadChannel(QProcess::StandardOutput);
-    greeter.start(QStringLiteral(KSCREENLOCKER_GREET_BIN), QStringList({QStringLiteral("--testing")}));
-    QVERIFY(greeter.waitForStarted());
+    QSignalSpy spy(&greeter, &QProcess::readyReadStandardOutput);
 
-    // wait some time till it's really set up
-    QTest::qSleep(5000);
+    greeter.setReadChannel(QProcess::StandardOutput);
+    greeter.start(KLibexec::path(QStringLiteral(KSCREENLOCKER_GREET_BIN_REL)), QStringList({QStringLiteral("--testing")}));
+
+    // Wait for the "locked at" message as an indication that the greeter is ready
+    spy.wait(5000);
+    QCOMPARE(spy.count(), 1);
+
+    QVERIFY(greeter.readAllStandardOutput().contains(QByteArrayLiteral("Locked at")));
 
     // now kill
     QFETCH(int, signal);
-    kill(greeter.pid(), signal);
+    kill(greeter.processId(), signal);
 
     QFETCH(bool, expectedQuit);
-    QCOMPARE(greeter.waitForFinished(1000), expectedQuit);
+    QCOMPARE(greeter.waitForFinished(3000), expectedQuit);
     if (greeter.state() == QProcess::Running) {
         greeter.terminate();
         QVERIFY(greeter.waitForFinished());
@@ -165,12 +159,12 @@ void KillTest::testImmediateKill()
     // this test ensures that the greeter indicates crashexit when a signal is sent to the greeter
     // before it had time to properly setup
     QProcess greeter(this);
-    greeter.start(QStringLiteral(KSCREENLOCKER_GREET_BIN), QStringList({QStringLiteral("--testing")}));
+    greeter.start(KLibexec::path(QStringLiteral(KSCREENLOCKER_GREET_BIN_REL)), QStringList({QStringLiteral("--testing")}));
     QVERIFY(greeter.waitForStarted());
 
     // now kill
     QFETCH(int, signal);
-    kill(greeter.pid(), signal);
+    kill(greeter.processId(), signal);
 
     QVERIFY(greeter.waitForFinished());
     QCOMPARE(greeter.exitStatus(), QProcess::CrashExit);

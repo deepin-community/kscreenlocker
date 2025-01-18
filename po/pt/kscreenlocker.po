@@ -2,8 +2,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: kscreenlocker\n"
 "Report-Msgid-Bugs-To: https://bugs.kde.org\n"
-"POT-Creation-Date: 2022-01-08 00:45+0000\n"
-"PO-Revision-Date: 2021-06-28 12:39+0100\n"
+"POT-Creation-Date: 2024-05-23 00:39+0000\n"
+"PO-Revision-Date: 2022-12-12 17:29+0000\n"
 "Last-Translator: José Nuno Coelho Pires <zepires@gmail.com>\n"
 "Language-Team: Portuguese <kde-i18n-pt@kde.org>\n"
 "Language: pt\n"
@@ -14,22 +14,12 @@ msgstr ""
 "X-POFile-SpellExtra: DPMS unlock loginctl sessions session ck ConsoleKit\n"
 "X-POFile-SpellExtra: LoginD\n"
 
-#, kde-format
-msgctxt "NAME OF TRANSLATORS"
-msgid "Your names"
-msgstr "José Nuno Pires"
-
-#, kde-format
-msgctxt "EMAIL OF TRANSLATORS"
-msgid "Your emails"
-msgstr "zepires@gmail.com"
-
-#: abstractlocker.cpp:53
+#: abstractlocker.cpp:43
 #, kde-format
 msgid ""
 "The screen locker is broken and unlocking is not possible anymore.\n"
-"In order to unlock it either ConsoleKit or LoginD is needed, none of\n"
-"which could be found on your system."
+"In order to unlock it either ConsoleKit or LoginD is needed, neither\n"
+"of which could be found on your system."
 msgstr ""
 "O bloqueio de ecrã está com problemas, sendo que não é possível mais "
 "desbloquear.\n"
@@ -37,11 +27,19 @@ msgstr ""
 "nenhum\n"
 "foi encontrado no seu sistema."
 
-#: abstractlocker.cpp:57
-#, kde-format
+#: abstractlocker.cpp:47
+#, fuzzy, kde-format
+#| msgid ""
+#| "The screen locker is broken and unlocking is not possible anymore.\n"
+#| "In order to unlock it, switch to a virtual terminal (e.g. Ctrl+Alt+F%1),\n"
+#| "log in as root and execute the command:\n"
+#| "\n"
+#| "# ck-unlock-session <session-name>\n"
+#| "\n"
+msgctxt "%1 = other terminal"
 msgid ""
 "The screen locker is broken and unlocking is not possible anymore.\n"
-"In order to unlock switch to a virtual terminal (e.g. Ctrl+Alt+F2),\n"
+"In order to unlock it, switch to a virtual terminal (e.g. Ctrl+Alt+F%1),\n"
 "log in as root and execute the command:\n"
 "\n"
 "# ck-unlock-session <session-name>\n"
@@ -49,55 +47,82 @@ msgid ""
 msgstr ""
 "O bloqueio de ecrã está com problemas, sendo que não é possível mais "
 "desbloquear.\n"
-"Para poder desbloquear, mude para um terminal virtual (p.ex. Ctrl+Alt+F2),\n"
-"autentique-se e execute o comando:\n"
+"Para poder desbloquear, mude para um terminal virtual (p.ex. Ctrl+Alt+F%1),\n"
+"autentique-se como 'root' e execute o comando:\n"
 "\n"
 "# ck-unlock-session <nome-sessão>\n"
 "\n"
 
-#: abstractlocker.cpp:62
-#, kde-format
+#: abstractlocker.cpp:52
+#, fuzzy, kde-format
+#| msgid ""
+#| "The screen locker is broken and unlocking is not possible anymore.\n"
+#| "In order to unlock it, switch to a virtual terminal (e.g. Ctrl+Alt+F%1),\n"
+#| "log in to your account and execute the command:\n"
+#| "\n"
+#| "loginctl unlock-session %2\n"
+#| "\n"
+#| "Then log out of the virtual session by pressing Ctrl+D, and switch\n"
+#| "back to the running session (Ctrl+Alt+F%3).\n"
+#| "Should you have forgotten the instructions, you can get back to this\n"
+#| "screen by pressing CTRL+ALT+F%2\n"
+#| "\n"
+msgctxt "%1 = other terminal, %2 = session ID, %3 = this terminal"
 msgid ""
 "The screen locker is broken and unlocking is not possible anymore.\n"
-"In order to unlock switch to a virtual terminal (e.g. Ctrl+Alt+F2),\n"
-"log in and execute the command:\n"
+"In order to unlock it, switch to a virtual terminal (e.g. Ctrl+Alt+F%1),\n"
+"log in to your account and execute the command:\n"
 "\n"
-"loginctl unlock-session %1\n"
+"loginctl unlock-session %2\n"
 "\n"
 "Then log out of the virtual session by pressing Ctrl+D, and switch\n"
-"back to the running session (Ctrl+Alt+F%2)."
+"back to the running session (Ctrl+Alt+F%3).\n"
+"Should you have forgotten the instructions, you can get back to this\n"
+"screen by pressing Ctrl+Alt+F%3\n"
+"\n"
 msgstr ""
 "O bloqueio de ecrã está com problemas, sendo que não é possível mais "
 "desbloquear.\n"
-"Para poder desbloquear, mude para um terminal virtual (p.ex. Ctrl+Alt+F2),\n"
+"Para poder desbloquear, mude para um terminal virtual (p.ex. Ctrl+Alt+F%1),\n"
 "autentique-se e execute o comando:\n"
 "\n"
-"loginctl unlock-session %1\n"
+"loginctl unlock-session %2\n"
 "\n"
 "Depois disso, saia da sessão virtual, carregando em Ctrl+D, e volte\n"
-"para a sessão em execução (Ctrl+Alt+F%2)."
+"para a sessão em execução (Ctrl+Alt+F%3).\n"
+"Caso se tenha esquecido das instruções, poderá voltar a este ecrã\n"
+"se carregar em Ctrl+Alt+F%2\n"
+"\n"
 
-#: ksldapp.cpp:172
+#: ksldapp.cpp:184
 #, kde-format
 msgid "Lock Session"
 msgstr "Bloquear a Sessão"
 
-#: ksldapp.cpp:399
+#: ksldapp.cpp:449
 #, kde-format
 msgid "Screen locked"
 msgstr "Ecrã bloqueado"
 
-#: ksldapp.cpp:558
+#: ksldapp.cpp:617
 #, kde-format
 msgid "Screen unlocked"
 msgstr "Ecrã desbloqueado"
 
-#: logind.cpp:168
+#: logind.cpp:161
 #, kde-format
 msgid "Screen Locker"
 msgstr "Bloqueio do Ecrã"
 
-#: logind.cpp:168
+#: logind.cpp:161
 #, kde-format
 msgid "Ensuring that the screen gets locked before going to sleep"
 msgstr "Garante que o ecrã fica bloqueado antes de se suspender"
+
+#~ msgctxt "NAME OF TRANSLATORS"
+#~ msgid "Your names"
+#~ msgstr "José Nuno Pires"
+
+#~ msgctxt "EMAIL OF TRANSLATORS"
+#~ msgid "Your emails"
+#~ msgstr "zepires@gmail.com"

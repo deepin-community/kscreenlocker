@@ -1,67 +1,48 @@
-/********************************************************************
- This file is part of the KDE project.
+/*
+SPDX-FileCopyrightText: 2014 Martin Gräßlin <mgraesslin@kde.org>
+SPDX-FileCopyrightText: 2014 Marco Martin <mart@kde.org>
+SPDX-FileCopyrightText: 2019 Kevin Ottens <kevin.ottens@enioka.com>
+SPDX-FileCopyrightText: 2020 David Redondo <kde@david-redondo.de>
 
-Copyright (C) 2014 Martin Gräßlin <mgraesslin@kde.org>
-Copyright (C) 2014 Marco Martin <mart@kde.org>
-Copyright (C) 2019 Kevin Ottens <kevin.ottens@enioka.com>
-Copyright (C) 2020 David Redondo <kde@david-redondo.de>
+SPDX-License-Identifier: GPL-2.0-or-later
+*/
+#pragma once
 
-This program is free software; you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2 of the License, or
-(at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*********************************************************************/
-#ifndef KCM_H
-#define KCM_H
-
-#include <KPackage/Package>
-#include <KQuickAddons/ManagedConfigModule>
+#include <KConfigPropertyMap>
+#include <KQuickManagedConfigModule>
 
 #include "kscreensaversettings.h"
+#include "wallpaper_integration.h"
 
 class ScreenLockerKcmForm;
 class AppearanceSettings;
 namespace ScreenLocker
 {
-class WallpaperIntegration;
-class LnFIntegration;
+class ShellIntegration;
 }
 
-namespace KDeclarative
-{
-class ConfigPropertyMap;
-}
-
-class ScreenLockerKcm : public KQuickAddons::ManagedConfigModule
+class ScreenLockerKcm : public KQuickManagedConfigModule
 {
     Q_OBJECT
 public:
-    explicit ScreenLockerKcm(QObject *parent = nullptr, const QVariantList &args = QVariantList());
+    explicit ScreenLockerKcm(QObject *parent, const KPluginMetaData &data);
 
     Q_PROPERTY(KScreenSaverSettings *settings READ settings CONSTANT)
-    Q_PROPERTY(KDeclarative::ConfigPropertyMap *wallpaperConfiguration READ wallpaperConfiguration NOTIFY currentWallpaperChanged)
-    Q_PROPERTY(KDeclarative::ConfigPropertyMap *lnfConfiguration READ lnfConfiguration CONSTANT)
-    Q_PROPERTY(QUrl lnfConfigFile READ lnfConfigFile CONSTANT)
+    Q_PROPERTY(KConfigPropertyMap *wallpaperConfiguration READ wallpaperConfiguration NOTIFY currentWallpaperChanged)
+    Q_PROPERTY(KConfigPropertyMap *shellConfiguration READ shellConfiguration CONSTANT)
+    Q_PROPERTY(QUrl shellConfigFile READ shellConfigFile CONSTANT)
     Q_PROPERTY(QUrl wallpaperConfigFile READ wallpaperConfigFile NOTIFY currentWallpaperChanged)
     Q_PROPERTY(ScreenLocker::WallpaperIntegration *wallpaperIntegration READ wallpaperIntegration NOTIFY currentWallpaperChanged)
     Q_PROPERTY(QString currentWallpaper READ currentWallpaper NOTIFY currentWallpaperChanged)
     Q_PROPERTY(bool isDefaultsAppearance READ isDefaultsAppearance NOTIFY isDefaultsAppearanceChanged)
 
-    Q_INVOKABLE QVector<WallpaperInfo> availableWallpaperPlugins()
+    Q_INVOKABLE QList<WallpaperInfo> availableWallpaperPlugins()
     {
         return KScreenSaverSettings::getInstance().availableWallpaperPlugins();
     }
 
     KScreenSaverSettings *settings() const;
-    QUrl lnfConfigFile() const;
+    QUrl shellConfigFile() const;
     QUrl wallpaperConfigFile() const;
     ScreenLocker::WallpaperIntegration *wallpaperIntegration() const;
     QString currentWallpaper() const;
@@ -72,20 +53,31 @@ public Q_SLOTS:
     void save() override;
     void defaults() override;
     void updateState();
+    void forceUpdateState();
 
 Q_SIGNALS:
     void currentWallpaperChanged();
+
+    /**
+     * Emitted when the defaults function is called.
+     */
+    void defaultsCalled();
+
     void isDefaultsAppearanceChanged();
+
+    /**
+     * Emitted when the load function is called.
+     */
+    void loadCalled();
 
 private:
     bool isSaveNeeded() const override;
     bool isDefaults() const override;
 
-    KDeclarative::ConfigPropertyMap *wallpaperConfiguration() const;
-    KDeclarative::ConfigPropertyMap *lnfConfiguration() const;
+    KConfigPropertyMap *wallpaperConfiguration() const;
+    KConfigPropertyMap *shellConfiguration() const;
 
     AppearanceSettings *m_appearanceSettings;
     QString m_currentWallpaper;
+    bool m_forceUpdateState = false;
 };
-
-#endif

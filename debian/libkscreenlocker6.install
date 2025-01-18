@@ -1,0 +1,4 @@
+usr/lib/*/libKScreenLocker.so.6
+usr/lib/*/libKScreenLocker.so.6.*
+usr/lib/*/libexec/kscreenlocker_greet
+usr/share/qlogging-categories6/kscreenlocker.categories

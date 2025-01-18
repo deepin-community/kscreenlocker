@@ -1,27 +1,15 @@
-/********************************************************************
- This file is part of the KDE project.
+/*
+SPDX-FileCopyrightText: 2011 Martin Gräßlin <mgraesslin@kde.org>
+SPDX-FileCopyrightText: 2023 Harald Sitter <sitter@kde.org>
 
-Copyright (C) 2011 Martin Gräßlin <mgraesslin@kde.org>
-
-This program is free software; you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2 of the License, or
-(at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*********************************************************************/
+SPDX-License-Identifier: GPL-2.0-or-later
+*/
 #include <KLocalizedString>
-#include <KQuickAddons/QtQuickSettings>
 
 #include <QCommandLineParser>
 #include <QDateTime>
 #include <QSessionManager>
+#include <QSurfaceFormat>
 
 #include <iostream>
 
@@ -40,10 +28,13 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include <unistd.h>
 #endif
 
+#include <KSignalHandler>
 #include <LayerShellQt/Shell>
 
 static void signalHandler(int signum)
 {
+    qCDebug(KSCREENLOCKER_GREET) << "Greeter received signal" << signum;
+
     ScreenLocker::UnlockApp *instance = qobject_cast<ScreenLocker::UnlockApp *>(QCoreApplication::instance());
 
     if (!instance) {
@@ -68,6 +59,12 @@ static void signalHandler(int signum)
 
 int main(int argc, char *argv[])
 {
+    sigset_t blockedSignals;
+    sigemptyset(&blockedSignals);
+    sigaddset(&blockedSignals, SIGTERM);
+    sigaddset(&blockedSignals, SIGUSR1);
+    pthread_sigmask(SIG_BLOCK, &blockedSignals, NULL);
+
     LayerShellQt::Shell::useLayerShell();
 
     // disable ptrace on the greeter
@@ -81,7 +78,7 @@ int main(int argc, char *argv[])
 
     qCDebug(KSCREENLOCKER_GREET) << "Greeter is starting up.";
 
-    KLocalizedString::setApplicationDomain("kscreenlocker_greet");
+    KLocalizedString::setApplicationDomain(QByteArrayLiteral("kscreenlocker_greet"));
 
     // explicitly disable input methods on x11 as it makes it impossible to unlock, see BUG 306932
     // but explicitly set on screen keyboard such as maliit is allowed
@@ -93,14 +90,32 @@ int main(int argc, char *argv[])
 
     // Suppresses modal warnings about unwritable configuration files which may render the system inaccessible
     qputenv("KDE_HOME_READONLY", "1");
+    // Kwin will re-lock if it restarts, reconnecting would leave us with two greeters but only one functional
+    qunsetenv("QT_WAYLAND_RECONNECT");
+    // Disable QML caching to prevent cache corruption in full or near-full disk scenarios.
+    // https://bugs.kde.org/show_bug.cgi?id=471952
+    // https://bugreports.qt.io/browse/QTBUG-117130
+    qputenv("QML_DISABLE_DISK_CACHE", "1");
+
+    auto format = QSurfaceFormat::defaultFormat();
+    format.setOption(QSurfaceFormat::ResetNotification);
+    QSurfaceFormat::setDefaultFormat(format);
 
     ScreenLocker::UnlockApp app(argc, argv);
+
+    KSignalHandler::self()->watchSignal(SIGTERM);
+    KSignalHandler::self()->watchSignal(SIGUSR1);
+
+    // only connect signal handler once we can actual handle the signal properly
+    QObject::connect(KSignalHandler::self(), &KSignalHandler::signalReceived, &app, &signalHandler);
+
+    pthread_sigmask(SIG_UNBLOCK, &blockedSignals, NULL);
+
     app.setQuitOnLastWindowClosed(false);
+    app.setQuitLockEnabled(false);
     QCoreApplication::setApplicationName(QStringLiteral("kscreenlocker_greet"));
     QCoreApplication::setApplicationVersion(QStringLiteral("0.1"));
     QCoreApplication::setOrganizationDomain(QStringLiteral("kde.org"));
-
-    KQuickAddons::QtQuickSettings::init();
 
     // disable session management for the greeter
     auto disableSessionManagement = [](QSessionManager &sm) {
@@ -116,9 +131,9 @@ int main(int argc, char *argv[])
 
     QCommandLineOption testingOption(QStringLiteral("testing"), i18n("Starts the greeter in testing mode"));
 
-    QCommandLineOption themeOption(QStringLiteral("theme"),
-                                   i18n("Starts the greeter with the selected theme (only in Testing mode)"),
-                                   QStringLiteral("theme"),
+    QCommandLineOption shellOption(QStringLiteral("shell"),
+                                   i18n("Starts the greeter with the selected shell theme (only in Testing mode)"),
+                                   QStringLiteral("shell"),
                                    QStringLiteral(""));
 
     QCommandLineOption immediateLockOption(QStringLiteral("immediateLock"), i18n("Lock immediately, ignoring any grace time etc."));
@@ -132,7 +147,7 @@ int main(int argc, char *argv[])
     QCommandLineOption waylandFdOption(QStringLiteral("ksldfd"), i18n("File descriptor for connecting to ksld."), QStringLiteral("fd"));
 
     parser.addOption(testingOption);
-    parser.addOption(themeOption);
+    parser.addOption(shellOption);
     parser.addOption(immediateLockOption);
     parser.addOption(graceTimeOption);
     parser.addOption(nolockOption);
@@ -141,13 +156,15 @@ int main(int argc, char *argv[])
     parser.process(app);
 
     if (parser.isSet(testingOption)) {
+        qCDebug(KSCREENLOCKER_GREET) << "Greeter is running in testing mode";
+
         app.setTesting(true);
         app.setImmediateLock(true);
 
-        // parse theme option
-        const QString theme = parser.value(themeOption);
-        if (!theme.isEmpty()) {
-            app.setTheme(theme);
+        // parse shell option
+        const QString shell = parser.value(shellOption);
+        if (!shell.isEmpty()) {
+            app.setShell(shell);
         }
 
         // allow ptrace if testing is enabled
@@ -185,13 +202,7 @@ int main(int argc, char *argv[])
 
     // This allow ksmserver to know when the application has actually finished setting itself up.
     // Crucial for blocking until it is ready, ensuring locking happens before sleep, e.g.
-    std::cout << "Locked at " << QDateTime::currentDateTime().toTime_t() << std::endl;
+    std::cout << "Locked at " << QDateTime::currentDateTime().toSecsSinceEpoch() << std::endl;
 
-    struct sigaction sa;
-    sa.sa_handler = signalHandler;
-    sigemptyset(&sa.sa_mask);
-    sa.sa_flags = SA_RESTART;
-    sigaction(SIGTERM, &sa, nullptr);
-    sigaction(SIGUSR1, &sa, nullptr);
     return app.exec();
 }

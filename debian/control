@@ -3,28 +3,29 @@ Section: libs
 Priority: optional
 Maintainer: Debian Qt/KDE Maintainers <debian-qt-kde@lists.debian.org>
 Uploaders: Aurélien COUDERC <coucouf@debian.org>,
-           Norbert Preining <norbert@preining.info>,
            Patrick Franz <deltaone@debian.org>,
            Scarlett Moore <sgmoore@kde.org>,
-Build-Depends: cmake (>= 3.16~),
-               debhelper-compat (= 13),
-               extra-cmake-modules (>= 5.86~),
+Build-Depends: debhelper-compat (= 13),
+               dh-sequence-kf6,
+               dh-sequence-pkgkde-symbolshelper,
+               cmake (>= 3.16~),
+               extra-cmake-modules (>= 6.5.0~),
                gettext,
-               libkf5crash-dev (>= 5.86~),
-               libkf5declarative-dev (>= 5.86~),
-               libkf5globalaccel-dev (>= 5.86~),
-               libkf5i18n-dev (>= 5.86~),
-               libkf5idletime-dev (>= 5.86~),
-               libkf5kcmutils-dev (>= 5.86~),
-               libkf5notifications-dev (>= 5.86~),
-               libkf5solid-dev (>= 5.86~),
-               libkf5textwidgets-dev (>= 5.66.0~),
-               libkf5wayland-dev (>= 4:5.5.1~),
-               libkf5windowsystem-dev (>= 5.86~),
-               libkf5xmlgui-dev (>= 5.86~),
-               liblayershellqtinterface-dev (>= 5.24.2~),
+               libkf6crash-dev (>= 6.5.0~),
+               libkf6globalaccel-dev (>= 6.5.0~),
+               libkf6i18n-dev (>= 6.5.0~),
+               libkf6idletime-dev (>= 6.5.0~),
+               libkf6kcmutils-dev (>= 6.5.0~),
+               libkf6kio-dev (>= 6.5.0~),
+               libkf6notifications-dev (>= 6.5.0~),
+               libkf6solid-dev (>= 6.5.0~),
+               libkf6svg-dev (>= 6.5.0~),
+               libkf6windowsystem-dev (>= 6.5.0~),
+               libkf6xmlgui-dev (>= 6.5.0~),
+               libkscreen-dev (>= 4:6.2.0~),
+               liblayershellqtinterface-dev (>= 6.2.0~),
                libpam0g-dev,
-               libqt5x11extras5-dev (>= 5.15.0~),
+               libplasma-dev (>= 6.2.5~),
                libwayland-dev (>= 1.3~),
                libx11-dev,
                libxcb-keysyms1-dev,
@@ -32,11 +33,10 @@ Build-Depends: cmake (>= 3.16~),
                libxcb1-dev,
                libxcursor-dev,
                libxi-dev,
-               pkg-config,
-               pkg-kde-tools,
-               qtbase5-dev (>= 5.15.0~),
-               qtdeclarative5-dev (>= 5.15.0~),
-Standards-Version: 4.6.0
+               pkgconf,
+               qt6-base-dev (>= 6.7.0~),
+               qt6-declarative-dev (>= 6.7.0~),
+Standards-Version: 4.7.0
 Homepage: https://invent.kde.org/plasma/kscreenlocker
 Vcs-Git: https://salsa.debian.org/qt-kde-team/kde/kscreenlocker.git
 Vcs-Browser: https://salsa.debian.org/qt-kde-team/kde/kscreenlocker
@@ -44,9 +44,9 @@ Rules-Requires-Root: no
 
 Package: kde-config-screenlocker
 Architecture: any
-Depends: libkscreenlocker5 (= ${binary:Version}),
+Depends: libkscreenlocker6 (= ${binary:Version}),
+         systemsettings,
          ${misc:Depends},
-         ${perl:Depends},
          ${shlibs:Depends},
 Description: KCM Module for kscreenlocker
  KDE systemsettings module to configure kscreenlocker.
@@ -67,7 +67,7 @@ Package: kscreenlocker-dev
 Section: libdevel
 Architecture: any
 Multi-Arch: same
-Depends: libkscreenlocker5 (= ${binary:Version}), ${misc:Depends}
+Depends: libkscreenlocker6 (= ${binary:Version}), ${misc:Depends},
 Description: Development files for kscreenlocker
  KDE systemsettings module to configure kscreenlocker.
  .
@@ -83,13 +83,14 @@ Description: Development files for kscreenlocker
  .
  This package contains development files for kscreenlocker.
 
-Package: libkscreenlocker5
+Package: libkscreenlocker6
 Architecture: any
-Pre-Depends: psmisc
-Depends: ${misc:Depends}, ${shlibs:Depends}
-Breaks: kwin-common (<< 4:5.23.90~), kwin-common (>> 4:5.24.70~)
-Recommends: kde-config-screenlocker
 Multi-Arch: same
+Pre-Depends: psmisc,
+Depends: ${misc:Depends}, ${shlibs:Depends},
+Recommends: kde-config-screenlocker,
+Breaks: libkscreenlocker5,
+Replaces: libkscreenlocker5,
 Description: Secure lock screen architecture
  KDE systemsettings module to configure kscreenlocker.
  .

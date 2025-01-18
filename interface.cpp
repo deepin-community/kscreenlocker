@@ -1,23 +1,9 @@
-/********************************************************************
- KSld - the KDE Screenlocker Daemon
- This file is part of the KDE project.
+/*
+SPDX-FileCopyrightText: 1999 Martin R. Jones <mjones@kde.org>
+SPDX-FileCopyrightText: 2011 Martin Gräßlin <mgraesslin@kde.org>
 
-Copyright 1999 Martin R. Jones <mjones@kde.org>
-Copyright (C) 2011 Martin Gräßlin <mgraesslin@kde.org>
-
-This program is free software; you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2 of the License, or
-(at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*********************************************************************/
+SPDX-License-Identifier: GPL-2.0-or-later
+*/
 #include "interface.h"
 #include "kscreensaveradaptor.h"
 #include "ksldapp.h"
@@ -26,11 +12,13 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 // KDE
 #include <KAuthorized>
 #include <KIdleTime>
-#include <KRandom>
+#include <KWindowSystem>
 // Qt
 #include <QDBusConnection>
+#include <QDBusContext>
 #include <QDBusReply>
 #include <QDBusServiceWatcher>
+#include <QRandomGenerator>
 
 namespace ScreenLocker
 {
@@ -59,7 +47,7 @@ Interface::Interface(KSldApp *parent)
     // I make it a really random number to avoid
     // some assumptions in clients, but just increase
     // while gnome-ss creates a random number every time
-    m_next_cookie = KRandom::random() % 20000;
+    m_next_cookie = QRandomGenerator::global()->bounded(19999);
 }
 
 Interface::~Interface()
@@ -78,6 +66,10 @@ uint Interface::GetActiveTime()
 
 uint Interface::GetSessionIdleTime()
 {
+    if (KWindowSystem::isPlatformWayland()) {
+        QDBusContext::sendErrorReply(QDBusError::NotSupported, QStringLiteral("GetSessionIdleTime is not supported on this platform"));
+        return 0;
+    }
     return KIdleTime::instance()->idleTime();
 }
 
@@ -203,7 +195,7 @@ void Interface::configure()
 
 void Interface::sendLockReplies()
 {
-    for (const QDBusMessage &reply : qAsConst(m_lockReplies)) {
+    for (const QDBusMessage &reply : std::as_const(m_lockReplies)) {
         QDBusConnection::sessionBus().send(reply);
     }
 
@@ -211,3 +203,5 @@ void Interface::sendLockReplies()
 }
 
 } // namespace
+
+#include "moc_interface.cpp"

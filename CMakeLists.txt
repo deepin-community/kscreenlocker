@@ -2,18 +2,17 @@ cmake_minimum_required(VERSION 3.16)
 
 project(kscreenlocker)
 set(CMAKE_C_STANDARD 99)
-set(PROJECT_VERSION "5.24.3")
-set(PROJECT_VERSION_MAJOR 5)
+set(PROJECT_VERSION "6.2.5")
+set(PROJECT_VERSION_MAJOR 6)
 
-set(QT_MIN_VERSION "5.15.0")
-set(KF5_MIN_VERSION "5.86")
-set(KDE_COMPILERSETTINGS_LEVEL "5.82")
+set(PROJECT_DEP_VERSION "6.2.5")
+set(QT_MIN_VERSION "6.7.0")
+set(KF6_MIN_VERSION "6.5.0")
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(Qt5 ${QT_MIN_VERSION} CONFIG REQUIRED COMPONENTS DBus Widgets Quick Test)
-find_package(ECM ${KF5_MIN_VERSION} REQUIRED NO_MODULE)
+find_package(ECM ${KF6_MIN_VERSION} REQUIRED NO_MODULE)
 set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake ${ECM_MODULE_PATH} )
 
 include(KDEInstallDirs)
@@ -28,6 +27,7 @@ include(FeatureSummary)
 include(GenerateExportHeader)
 include(KDEClangFormat)
 include(KDEGitCommitHooks)
+include(ECMDeprecationSettings)
 
 include(CheckIncludeFile)
 include(CheckSymbolExists)
@@ -42,32 +42,22 @@ add_feature_info("prctl/procctl tracing control"
                  CAN_DISABLE_PTRACE
                  "Required for disallowing ptrace on greeter and kcheckpass process")
 
-check_include_file("sys/signalfd.h" HAVE_SIGNALFD_H)
-if (NOT HAVE_SIGNALFD_H)
-    check_include_files("sys/types.h;sys/event.h" HAVE_EVENT_H)
-endif ()
-if (NOT (HAVE_SIGNALFD_H OR HAVE_EVENT_H))
-    message(FATAL_ERROR "kcheckpass either needs signalfd() or kevent()&sigtimedwait() to work")
-endif ()
-add_feature_info("sys/signalfd.h"
-                 HAVE_SIGNALFD_H
-                 "Use the signalfd() api for signalhandling")
-add_feature_info("sys/event.h"
-                 HAVE_EVENT_H
-                 "Use the kevent() and sigwaitinfo() api for signalhandling")
+find_package(Qt6 ${QT_MIN_VERSION} CONFIG REQUIRED COMPONENTS DBus Widgets Quick Test)
+find_package(KF6 ${KF6_MIN_VERSION} REQUIRED COMPONENTS
+    Crash
+    KCMUtils
+    KIO
+    GlobalAccel
+    I18n
+    IdleTime
+    Notifications
+    Solid
+    WindowSystem
+    XmlGui
+    Svg
+)
 
-find_package(KF5 ${KF5_MIN_VERSION} REQUIRED COMPONENTS
-                    Crash
-                    Declarative
-                    KCMUtils
-                    GlobalAccel
-                    I18n
-                    IdleTime
-                    Notifications
-                    Solid
-                    WindowSystem
-                    XmlGui
-                    )
+find_package(PlasmaQuick ${PROJECT_DEP_VERSION} REQUIRED)
 
 find_package(X11)
 set_package_properties(X11 PROPERTIES DESCRIPTION "X11 libraries"
@@ -79,15 +69,10 @@ find_package(XCB MODULE REQUIRED COMPONENTS XCB KEYSYMS XTEST)
 set_package_properties(XCB PROPERTIES TYPE REQUIRED)
 add_feature_info("XInput" X11_Xinput_FOUND "Required for grabbing XInput2 devices in the screen locker")
 
-find_package(Qt5 ${QT_MIN_VERSION} CONFIG REQUIRED COMPONENTS X11Extras)
-
-find_package(KF5Wayland CONFIG REQUIRED)
-set_package_properties(KF5Wayland PROPERTIES
-                       TYPE REQUIRED
-                       PURPOSE "Required for building screenlocker")
 find_package(WaylandScanner)
 find_package(Wayland 1.3 COMPONENTS Client Server)
 find_package(LayerShellQt REQUIRED)
+find_package(KF6Screen REQUIRED)
 
 set_package_properties(Wayland PROPERTIES
                        TYPE REQUIRED
@@ -98,16 +83,16 @@ set_package_properties(loginctl PROPERTIES
     URL "https://www.freedesktop.org/software/systemd/man/loginctl.html"
     DESCRIPTION "Send control commands to the login manager"
     TYPE RUNTIME
-    )
+)
 set(HAVE_LOGINCTL ${loginctl_FOUND})
 
-if ( NOT HAVE_LOGINCTL )
+if (NOT HAVE_LOGINCTL)
     find_package(ConsoleKit)
     set_package_properties(ConsoleKit PROPERTIES
         URL "https://github.com/ConsoleKit2/ConsoleKit2"
         DESCRIPTION "Framework for tracking user login sessions"
         TYPE RECOMMENDED
-        )
+    )
     set(HAVE_CONSOLEKIT ${ConsoleKit_FOUND})
 endif ()
 
@@ -123,9 +108,7 @@ option(PAM_REQUIRED "Require building with PAM" ON)
 
 include(ConfigureChecks.cmake)
 
-configure_file(config-workspace.h.cmake ${CMAKE_CURRENT_BINARY_DIR}/config-workspace.h)
 configure_file(config-unix.h.cmake ${CMAKE_CURRENT_BINARY_DIR}/config-unix.h )
-configure_file(config-X11.h.cmake ${CMAKE_CURRENT_BINARY_DIR}/config-X11.h)
 
 if (HAVE_CONSOLEKIT)
     configure_file(ck-unlock-session.cmake ${CMAKE_CURRENT_BINARY_DIR}/ck-unlock-session)
@@ -135,9 +118,10 @@ endif ()
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu90")
 
 ecm_setup_version(${PROJECT_VERSION} VARIABLE_PREFIX KSCREENLOCKER
-                        VERSION_HEADER "${CMAKE_CURRENT_BINARY_DIR}/kscreenlocker_version.h"
-                        PACKAGE_VERSION_FILE "${CMAKE_CURRENT_BINARY_DIR}/KScreenLockerConfigVersion.cmake"
-                        SOVERSION 5)
+    VERSION_HEADER "${CMAKE_CURRENT_BINARY_DIR}/kscreenlocker_version.h"
+    PACKAGE_VERSION_FILE "${CMAKE_CURRENT_BINARY_DIR}/KScreenLockerConfigVersion.cmake"
+    SOVERSION 5
+)
 
 configure_file(config-kscreenlocker.h.cmake ${CMAKE_CURRENT_BINARY_DIR}/config-kscreenlocker.h)
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
@@ -146,7 +130,10 @@ set(KSLD_INCLUDEDIR "${KDE_INSTALL_INCLUDEDIR}/KScreenLocker")
 
 include(ECMQtDeclareLoggingCategory)
 
-add_subdirectory(kcheckpass)
+ecm_set_disabled_deprecation_versions(QT 5.15.2
+    KF 5.101
+)
+
 add_subdirectory(greeter)
 add_subdirectory(kcm)
 add_subdirectory(settings)
@@ -155,7 +142,7 @@ add_definitions(-DTRANSLATION_DOMAIN=\"kscreenlocker\")
 
 set(screensaver_dbusXML dbus/org.freedesktop.ScreenSaver.xml)
 set(kscreensaver_dbusXML dbus/org.kde.screensaver.xml)
-set(powerdevilpolicyagent_xml dbus/kf5_org.kde.Solid.PowerManagement.PolicyAgent.xml)
+set(powerdevilpolicyagent_xml dbus/kf6_org.kde.Solid.PowerManagement.PolicyAgent.xml)
 
 set(ksld_SRCS
    abstractlocker.cpp
@@ -167,17 +154,24 @@ set(ksld_SRCS
    logind.cpp
    waylandserver.cpp
    powermanagement_inhibition.cpp
+   abstractlocker.h
+   ksldapp.h
+   interface.h
+   globalaccel.h
+   x11locker.h
+   waylandlocker.h
+   logind.h
+   waylandserver.h
+   powermanagement_inhibition.h
 )
 
 ecm_qt_declare_logging_category(ksld_SRCS
-    HEADER
-        kscreenlocker_logging.h
-    IDENTIFIER
-        KSCREENLOCKER
-    CATEGORY_NAME
-        kscreenlocker
-    DEFAULT_SEVERITY
-        Critical
+    HEADER kscreenlocker_logging.h
+    IDENTIFIER KSCREENLOCKER
+    CATEGORY_NAME kscreenlocker
+    DEFAULT_SEVERITY Critical
+    DESCRIPTION "KScreenLocker"
+    EXPORT KSCREENLOCKER
 )
 
 qt_add_dbus_adaptor(ksld_SRCS ${screensaver_dbusXML} interface.h ScreenLocker::Interface)
@@ -194,24 +188,29 @@ add_library(KScreenLocker SHARED ${ksld_SRCS})
 target_link_libraries(KScreenLocker
 PUBLIC
    Qt::Core
-   Qt::X11Extras
 PRIVATE
    settings
    Qt::DBus
-   KF5::I18n
-   KF5::IdleTime
-   KF5::GlobalAccel
-   KF5::Notifications
-   KF5::CoreAddons
-   KF5::ConfigGui
-   KF5::Package
-   KF5::WindowSystem
-   KF5::XmlGui
+   KF6::I18n
+   KF6::IdleTime
+   KF6::GlobalAccel
+   KF6::Notifications
+   KF6::CoreAddons
+   KF6::ConfigGui
+   KF6::Package
+   KF6::WindowSystem
    X11::X11
    XCB::XCB
    XCB::KEYSYMS
-   KF5::WaylandServer
    Wayland::Server
+)
+
+set(kscreenlocker_greet_bin_abs ${CMAKE_INSTALL_FULL_LIBEXECDIR}/kscreenlocker_greet)
+# The file path of kscreenlocker_greet must be relative to the KScreenLocker library.
+file(RELATIVE_PATH kscreenlocker_greet_bin_rel ${CMAKE_INSTALL_FULL_LIBDIR} ${kscreenlocker_greet_bin_abs})
+target_compile_definitions(KScreenLocker PRIVATE
+    KSCREENLOCKER_GREET_BIN_ABS="${kscreenlocker_greet_bin_abs}"
+    KSCREENLOCKER_GREET_BIN_REL="${kscreenlocker_greet_bin_rel}"
 )
 
 if (X11_Xinput_FOUND)
@@ -244,8 +243,8 @@ configure_package_config_file(ScreenSaverDBusInterfaceConfig.cmake.in
 set_target_properties(KScreenLocker PROPERTIES VERSION ${PROJECT_VERSION} SOVERSION ${PROJECT_VERSION_MAJOR})
 
 install(FILES
-        ${CMAKE_CURRENT_BINARY_DIR}/ScreenSaverDBusInterfaceConfig.cmake
-        DESTINATION "${KDE_INSTALL_CMAKEPACKAGEDIR}/ScreenSaverDBusInterface")
+    ${CMAKE_CURRENT_BINARY_DIR}/ScreenSaverDBusInterfaceConfig.cmake
+    DESTINATION "${KDE_INSTALL_CMAKEPACKAGEDIR}/ScreenSaverDBusInterface")
 
 configure_package_config_file("${CMAKE_CURRENT_SOURCE_DIR}/KScreenLockerConfig.cmake.in"
     "${CMAKE_CURRENT_BINARY_DIR}/KScreenLockerConfig.cmake"
@@ -278,24 +277,25 @@ install(FILES "${CMAKE_CURRENT_BINARY_DIR}/KScreenLockerConfig.cmake"
 		DESTINATION "${KDE_INSTALL_CMAKEPACKAGEDIR}/KScreenLocker"
 		COMPONENT Devel)
 
-install(FILES kscreenlocker.notifyrc  DESTINATION ${KDE_INSTALL_KNOTIFY5RCDIR} RENAME ksmserver.notifyrc)
+ecm_qt_install_logging_categories(
+    EXPORT KSCREENLOCKER
+    FILE kscreenlocker.categories
+    DESTINATION ${KDE_INSTALL_LOGGINGCATEGORIESDIR}
+)
+
+install(FILES kscreenlocker.notifyrc  DESTINATION ${KDE_INSTALL_KNOTIFYRCDIR} RENAME ksmserver.notifyrc)
 install(FILES ${screensaver_dbusXML}
         DESTINATION ${KDE_INSTALL_DBUSINTERFACEDIR}
-        RENAME kf5_org.freedesktop.ScreenSaver.xml)
+        RENAME kf6_org.freedesktop.ScreenSaver.xml)
 
 install(FILES ${kscreensaver_dbusXML}
         DESTINATION ${KDE_INSTALL_DBUSINTERFACEDIR})
-
-
-install(FILES   updaters/kscreenlocker.upd DESTINATION ${KDE_INSTALL_DATADIR}/kconf_update)
-install(PROGRAMS updaters/ksreenlocker_5_3_separate_autologin.pl
-                DESTINATION ${KDE_INSTALL_DATADIR}/kconf_update)
 
 if(BUILD_TESTING)
    add_subdirectory(autotests)
    add_subdirectory(tests)
 endif()
-feature_summary(WHAT ALL INCLUDE_QUIET_PACKAGES FATAL_ON_MISSING_REQUIRED_PACKAGES)
 
-find_package(KF5I18n CONFIG REQUIRED)
 ki18n_install(po)
+
+feature_summary(WHAT ALL INCLUDE_QUIET_PACKAGES FATAL_ON_MISSING_REQUIRED_PACKAGES)
